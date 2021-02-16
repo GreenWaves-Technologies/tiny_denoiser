@@ -1,0 +1,17 @@
+set debug false
+adjust
+fusions --scale8
+aquant 
+show
+qshow
+aquant samples/temp.wav -f 8 --scheme SQ8
+
+set l3_ram_ext_managed false
+set graph_reorder_constant_in true
+set graph_produce_node_names true
+set graph_produce_operinfos true
+set graph_monitor_cycles true
+set graph_const_exec_from_flash false
+
+gen denoiserModel.c -T BUILD_MODEL_8BIT/tensors -M BUILD_MODEL_8BIT -t
+save_state
