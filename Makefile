@@ -10,13 +10,13 @@ endif
 
 ## Model Definition Parameters ##
 MODEL_PREFIX = denoiser
-WAV_PATH = $(CURDIR)/samples/recorded_4.wav
+WAV_PATH = $(CURDIR)/samples/temp.wav
 
 #checkme
 FRAME_SIZE_ms = 40
 FRAME_STEP_ms = 20
-AT_INPUT_WIDTH=10
-AT_INPUT_HEIGHT=49
+AT_INPUT_WIDTH=1088
+AT_INPUT_HEIGHT=1
 
 
 MODEL_SQ8=1
@@ -53,7 +53,10 @@ include common/model_decl.mk
 
 
 ## File Definition ##
-APP_SRCS    += denoiser.c $(MODEL_GEN_C) $(MODEL_COMMON_SRCS) $(CNN_LIB)
+APP_SRCS    += denoiser.c $(MODEL_GEN_C) $(MODEL_COMMON_SRCS) $(CNN_LIB) common/wavIO.c
+
+APP_CFLAGS += -Icommon -I$(GAP_SDK_HOME)/libs/gap_lib/include
+
 APP_CFLAGS += -O3 -s -mno-memcpy -fno-tree-loop-distribute-patterns 
 APP_CFLAGS += -I. -I$(MODEL_COMMON_INC) -I$(TILER_EMU_INC) -I$(TILER_INC) -I$(MODEL_BUILD) $(CNN_LIB_INCLUDE)
 APP_CFLAGS += -DAT_MODEL_PREFIX=$(MODEL_PREFIX) $(MODEL_SIZE_CFLAGS)

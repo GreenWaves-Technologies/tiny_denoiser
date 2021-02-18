@@ -1,10 +1,9 @@
 set debug false
 adjust
 fusions --scale8
-aquant 
-show
-qshow
 aquant samples/temp.wav -f 8 --scheme SQ8
+ 
+qshow
 
 set l3_ram_ext_managed false
 set graph_reorder_constant_in true
