@@ -43,27 +43,32 @@ int count, idx, end1, end2;
 int rec_digit;
 int prev = -1;
 
-struct pi_device gpio;
-#define GPIO_OUT PI_GPIO_A1_PAD_13_B2 
-#define NMAX_ITER 5
-int iter = 0;
-
+#ifdef GAPUINO
+    struct pi_device gpio;
+    #define GPIO_OUT PI_GPIO_A1_PAD_13_B2 
+    #define NMAX_ITER 5
+    int iter = 0;
+#endif
 
 
 
 
 static void RunDenoiser()
 {
-//        L1_Memory = __PREFIX(_L1_Memory);
+// L1_Memory = __PREFIX(_L1_Memory);
 
   PRINTF("Running on cluster\n");
 #ifdef PERF
   gap_cl_starttimer();
   gap_cl_resethwtimer();
 #endif
+#ifdef GAPUINO
   pi_gpio_pin_write(&gpio, GPIO_OUT, 1 );
-  __PREFIX(CNN)(AudioIn,  AudioOut);
+#endif
+  __PREFIX(CNN)(AudioIn,  0, AudioOut);
+#ifdef GAPUINO
   pi_gpio_pin_write(&gpio, GPIO_OUT, 0);
+#endif
   //Checki Results
 //  rec_digit = 0;
 //  int highest = ResOut[0];
@@ -100,8 +105,9 @@ void denoiser(void)
     //PMU_set_voltage(voltage, 0);
     printf("Set VDD voltage as %.2f, FC Frequency as %d MHz, CL Frequency = %d MHz\n", 
         (float)voltage/1000, FREQ_FC, FREQ_CL);
-    pulp_write32(0x1A10414C,1);
+//    pulp_write32(0x1A10414C,1);   // what is this?
 
+#ifdef GAPUINO
 	//configuring gpio
 	struct pi_gpio_conf gpio_conf = {0};
     pi_gpio_conf_init(&gpio_conf);
@@ -117,7 +123,7 @@ void denoiser(void)
     pi_pad_set_function(PI_PAD_13_B2_RF_PACTRL1, PI_PAD_13_B2_GPIO_A1_FUNC1  );
 
     pi_gpio_pin_write(&gpio, GPIO_OUT, 0);
-
+#endif
     printf("Entering main controller\n");
     /* Configure And open cluster. */
     struct pi_device cluster_dev;
@@ -138,9 +144,8 @@ void denoiser(void)
         pmsis_exit(1);
     }
 
-
-    printf("\n\nConstructor\n");
     // IMPORTANT - MUST BE CALLED AFTER THE CLUSTER IS SWITCHED ON!!!!
+    printf("\n\nConstructor\n");
     int err_construct = __PREFIX(CNN_Construct)();
     if (err_construct)
     {
@@ -153,12 +158,12 @@ void denoiser(void)
     // read data from file
     header_struct header_info;
     printf("Reading the wav file\n");
-    if (ReadWavFromFile(WavName, AudioIn, AT_INPUT_WIDTH*sizeof(short int), &header_info)){
-        printf("Error reading wav file\n");
-        pmsis_exit(1);
-    }
-    num_samples = header_info.DataSize * 8 / (header_info.NumChannels * header_info.BitsPerSample);
-    printf("Number of samples: %d\n", num_samples);
+//    if (ReadWavFromFile(WavName, AudioIn, AT_INPUT_WIDTH*sizeof(short int), &header_info)){
+//        printf("Error reading wav file\n");
+//        pmsis_exit(1);
+//    }
+//    num_samples = header_info.DataSize * 8 / (header_info.NumChannels * header_info.BitsPerSample);
+//    printf("Number of samples: %d\n", num_samples);
 
     PRINTF("Call cluster\n");
 	struct pi_cluster_task *task_net = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
@@ -186,15 +191,14 @@ void denoiser(void)
         printf("\n");
         printf("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n", "Total", TotalCycles, TotalOper, ((float) TotalOper)/ TotalCycles);
         printf("\n");
-        break;
     }
     #endif  /* PERF */
 
 
     __PREFIX(CNN_Destruct)();
 
-    pi_l2_free(AudioIn, AT_INPUT_WIDTH * AT_INPUT_HEIGHT * sizeof(char) );
-    pi_l2_free(ResOut,  AT_INPUT_WIDTH * AT_INPUT_HEIGHT * sizeof(char) );
+    pi_l2_free(AudioIn,     AT_INPUT_WIDTH * AT_INPUT_HEIGHT * sizeof(char) );
+    pi_l2_free(AudioOut,    AT_INPUT_WIDTH * AT_INPUT_HEIGHT * sizeof(char) );
     // Close the cluster
     pi_cluster_close(&cluster_dev);
     PRINTF("Ended\n");

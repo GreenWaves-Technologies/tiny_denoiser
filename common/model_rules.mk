@@ -13,9 +13,8 @@ else
   MODEL_TRAIN_FLAGS =
 endif
 
-
-
 USE_DISP=1
+
 ifdef USE_DISP
   SDL_FLAGS= -lSDL2 -lSDL2_ttf
 else
@@ -38,30 +37,34 @@ endif
 $(MODEL_BUILD):
 	mkdir $(MODEL_BUILD)
 
-$(MODEL_TFLITE): $(TRAINED_TFLITE_MODEL) | $(MODEL_BUILD)
+$(MODEL_PATH): $(TRAINED_MODEL) | $(MODEL_BUILD)
 	cp $< $@
 
-# Creates an Autotiler Model file by running the commands in the script
+# Creates an NNTOOL state file by running the commands in the script
 # These commands could be run interactively
 # The commands:
 # 	Adjust the model to match AutoTiler tensor order
 #	Fuse nodes together to match fused AutoTiler generators
 #	Quantize the graph if not already done with tflite quantization
-#	Generate the Autotiler model code
+#	Save the graph state files
+
+$(MODEL_STATE): $(MODEL_PATH) $(NNTOOL_SCRIPT) | $(MODEL_BUILD)
+	echo "GENERATING NNTOOL STATE FILE"
+	$(NNTOOL) -s $(NNTOOL_SCRIPT) $< $(NNTOOL_EXTRA_FLAGS)
+
+nntool_state: $(MODEL_STATE)
 
 # Runs NNTOOL with its state file to generate the autotiler model code
-$(MODEL_BUILD)/$(MODEL_SRC): $(MODEL_TFLITE) | $(MODEL_BUILD) $(SAMPLES)
-	echo "GENERATING AUTOTILER MODEL $(MODEL_BUILD)"
-	sed -e "s|MODEL_SRC|$(MODEL_SRC)|g" -e "s|TENSORS_DIR|$(TENSORS_DIR)|g" -e "s|MODEL_BUILD|$(MODEL_BUILD)|g" -e "s|GRAPH_DUMP|$(NNTOOL_SET_GRAPH_DUMP)|g" -e "s|LARGE_OPT|$(LARGE_OPT)|g" \
-		$(NNTOOL_SCRIPT_PARAMETRIC) > $(NNTOOL_SCRIPT)
-	$(NNTOOL) -s $(NNTOOL_SCRIPT) $< $(NNTOOL_EXTRA_FLAGS)
+$(MODEL_BUILD)/$(MODEL_SRC): $(MODEL_STATE) $(MODEL_PATH) | $(MODEL_BUILD)
+	echo "GENERATING AUTOTILER MODEL"
+	$(NNTOOL) -g -M $(MODEL_BUILD) -m $(MODEL_SRC) -T $(TENSORS_DIR) -H $(MODEL_HEADER) $(MODEL_GENFLAGS_EXTRA) $<
 
 nntool_gen: $(MODEL_BUILD)/$(MODEL_SRC)
 
 # Build the code generator from the model code
 $(MODEL_GEN_EXE): $(CNN_GEN) $(MODEL_BUILD)/$(MODEL_SRC) $(EXTRA_GENERATOR_SRC) | $(MODEL_BUILD)
 	echo "COMPILING AUTOTILER MODEL"
-	gcc -g -o $(MODEL_GEN_EXE) -I. -I$(TILER_INC) -I$(TILER_EMU_INC) $(CNN_GEN_INCLUDE) $(CNN_LIB_INCLUDE) $? $(TILER_LIB) $(SDL_FLAGS)
+	gcc -g -o $(MODEL_GEN_EXE) -I. -I$(TILER_INC) -I$(TILER_EMU_INC) $(CNN_GEN_INCLUDE) $(CNN_LIB_INCLUDE) $^ $(TILER_LIB) $(SDL_FLAGS) 
 
 compile_model: $(MODEL_GEN_EXE)
 
@@ -73,10 +76,12 @@ $(MODEL_GEN_C): $(MODEL_GEN_EXE)
 # A phony target to simplify including this in the main Makefile
 model: $(MODEL_GEN_C)
 
-clean_model:
+clean_at_model:
 	$(RM) $(MODEL_GEN_EXE)
-	$(RM) -rf $(MODEL_BUILD)
 	$(RM) $(MODEL_BUILD)/*.dat
+
+clean_model:
+	$(RM) -rf $(MODEL_BUILD)
 
 clean_train:
 	$(RM) -rf $(MODEL_TRAIN_BUILD)

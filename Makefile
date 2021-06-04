@@ -10,17 +10,21 @@ endif
 
 ## Model Definition Parameters ##
 MODEL_PREFIX = denoiser
+ONNX=1
 WAV_PATH = $(CURDIR)/samples/temp.wav
 
 #checkme
 FRAME_SIZE_ms = 40
 FRAME_STEP_ms = 20
-AT_INPUT_WIDTH=1088
+AT_INPUT_WIDTH=257 #1088
 AT_INPUT_HEIGHT=1
 
 
 MODEL_SQ8=1
+MODEL_FP16=1
 pulpChip = GAP
+PMSIS_OS=pulpos
+
 RM=rm -f
 io=host
 
@@ -35,7 +39,7 @@ NNTOOL_EXTRA_FLAGS =
 MODEL_SUFFIX = _$(QUANT_BITS)BIT
 MODEL_BUILD = BUILD_MODEL_$(QUANT_BITS)BIT
 
-CLUSTER_STACK_SIZE=4096
+CLUSTER_STACK_SIZE=8096
 CLUSTER_SLAVE_STACK_SIZE=1024
 TOTAL_STACK_SIZE=$(shell expr $(CLUSTER_STACK_SIZE) \+ $(CLUSTER_SLAVE_STACK_SIZE) \* 7)
 MODEL_L1_MEMORY=$(shell expr 60000 \- $(TOTAL_STACK_SIZE))
@@ -83,16 +87,7 @@ all:: model
 
 clean:: clean_model 
 
-clean_at_model:
-	$(RM) $(MODEL_GEN_EXE)
-
-at_model_disp:: $(MODEL_BUILD) $(MODEL_GEN_EXE)
-	$(MODEL_GEN_EXE) -o $(MODEL_BUILD) -c $(MODEL_BUILD) $(MODEL_GEN_EXTRA_FLAGS) --debug=Disp
-
-at_model:: $(MODEL_BUILD) $(MODEL_GEN_EXE)
-	$(MODEL_GEN_EXE) -o $(MODEL_BUILD) -c $(MODEL_BUILD) $(MODEL_GEN_EXTRA_FLAGS)
-
 include common/model_rules.mk
 #include mfcc_model.mk
 
-include $(GAP_SDK_HOME)/tools/rules/pmsis_rules.mk
+include $(RULES_DIR)/pmsis_rules.mk
