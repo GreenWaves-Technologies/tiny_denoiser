@@ -9,9 +9,32 @@ ifndef GAP_SDK_HOME
 endif
 
 
+#quantization dependent features
+
+# Quantization Mode
+QUANT_BITS?=8
+ifeq 		'$(QUANT_BITS)' '8'
+	NNTOOL_SCRIPT=model/nntool_script_8
+	MODEL_SQ8=1
+
+else ifeq 	'$(QUANT_BITS)' '16'
+	NNTOOL_SCRIPT=model/nntool_script
+
+else ifeq 	'$(QUANT_BITS)' 'NE16'
+	NNTOOL_SCRIPT=model/nntool_script_ne16
+	MODEL_NE16=1
+	MODEL_SQ8=1
+
+else ifeq 	'$(QUANT_BITS)' 'FP16'
+	NNTOOL_SCRIPT=model/nntool_script_fp16
+	MODEL_FP16=1
+
+else
+	$(error Quantization mode is not recognized. Choose among 8, 16, FP16 or NE16)
+endif
+
 
 ## Model Definition Parameters ##
-QUANT_BITS=8
 BUILD_DIR=BUILD
 
 MODEL_PREFIX = denoiser
@@ -28,33 +51,43 @@ MODEL_TENSORS = $(MODEL_BUILD)/$(MODEL_PREFIX)_L3_Flash_Const.dat
 WAV_PATH = $(CURDIR)/samples/temp.wav
 FRAME_SIZE_ms = 40
 FRAME_STEP_ms = 20
-AT_INPUT_WIDTH=257 #1088
+AT_INPUT_WIDTH= 257 #1088
 AT_INPUT_HEIGHT=1
 
-# Quantization Library
-#MODEL_SQ8=1
-MODEL_FP16=1
 
-
-
-NNTOOL_SCRIPT=model/nntool_script
 NNTOOL_EXTRA_FLAGS =
 
 
-CLUSTER_STACK_SIZE=8096
-CLUSTER_SLAVE_STACK_SIZE=1024
-CLUSTER_NUM_CORES=8
-TOTAL_STACK_SIZE=$(shell expr $(CLUSTER_STACK_SIZE) \+ $(CLUSTER_SLAVE_STACK_SIZE) \* 7)
-MODEL_L1_MEMORY=$(shell expr 60000 \- $(TOTAL_STACK_SIZE))
-MODEL_L2_MEMORY=350000
-MODEL_L3_MEMORY=8000000
-MODEL_SIZE_CFLAGS = -DAT_INPUT_HEIGHT=$(AT_INPUT_HEIGHT) -DAT_INPUT_WIDTH=$(AT_INPUT_WIDTH) -DAT_INPUT_COLORS=$(AT_INPUT_COLORS)
-ifeq '$(TARGET_CHIP)' 'GAP8_V3'
-	FREQ_CL?=175
-else
+ifeq '$(TARGET_CHIP)' 'GAP9_V2'
 	FREQ_CL?=50
+	FREQ_FC?=50
+
+	CLUSTER_STACK_SIZE=8096
+	CLUSTER_SLAVE_STACK_SIZE=1024
+	CLUSTER_NUM_CORES=8
+	TOTAL_STACK_SIZE=$(shell expr $(CLUSTER_STACK_SIZE) \+ $(CLUSTER_SLAVE_STACK_SIZE) \* 7)
+	MODEL_L1_MEMORY=$(shell expr 128000 \- $(TOTAL_STACK_SIZE))
+	MODEL_L2_MEMORY=1300000
+	MODEL_L3_MEMORY=8000000
+
+else
+	ifeq '$(TARGET_CHIP)' 'GAP8_V3'
+		FREQ_CL?=175
+	else
+		FREQ_CL?=50
+	endif
+	FREQ_FC?=250
+
+	CLUSTER_STACK_SIZE=8096
+	CLUSTER_SLAVE_STACK_SIZE=1024
+	CLUSTER_NUM_CORES=8
+	TOTAL_STACK_SIZE=$(shell expr $(CLUSTER_STACK_SIZE) \+ $(CLUSTER_SLAVE_STACK_SIZE) \* 7)
+	MODEL_L1_MEMORY=$(shell expr 60000 \- $(TOTAL_STACK_SIZE))
+	MODEL_L2_MEMORY=350000
+	MODEL_L3_MEMORY=8000000
 endif
-FREQ_FC?=250
+MODEL_SIZE_CFLAGS = -DAT_INPUT_HEIGHT=$(AT_INPUT_HEIGHT) -DAT_INPUT_WIDTH=$(AT_INPUT_WIDTH) -DAT_INPUT_COLORS=$(AT_INPUT_COLORS)
+
 
 include common/model_decl.mk
 include $(RULES_DIR)/at_common_decl.mk
@@ -108,15 +141,10 @@ test_accuracy_tflite:
 all:: model
 
 clean:: clean_model
+	rm -rf BUILD_MODEL*
 
 include common/model_rules.mk
 #include mfcc_model.mk
 
-$(info APP_SRCS... $(APP_SRCS))
-$(info APP_CFLAGS... $(APP_CFLAGS))
 
-
-$(info TILER_EMU_INC... $(TILER_EMU_INC))
-$(info TILER_INC... $(TILER_INC))
-$(info CNN_LIB_INCLUDE... $(CNN_LIB_INCLUDE))
 include $(RULES_DIR)/pmsis_rules.mk
