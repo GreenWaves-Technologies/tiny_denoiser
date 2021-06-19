@@ -9,17 +9,29 @@
 
 /* Autotiler includes. */
 #include "Gap.h"
-
+#include "denoiser.h"
 #include "wavIO.h"
 #include "denoiserKernels.h"
+
+#include "RFFTKernels.h"
+#include "TwiddlesDef.h"
+#include "RFFTTwiddlesDef.h"
+#include "SwapTablesDef.h"
+#include "WinLUT.def"
+#include "WinLUT_f32.def"
+#ifdef __gap9__
+#include "WinLUT_f16.def"
+#endif
+
+
 
 
 
 #define  WAV_BUFFER_SIZE    16000 // 1sec@16kHz
 #define  NUM_CLASSES        12
 
-//DCT_NORMALIZATION        -> np.sqrt(1/(N_DCT))*0.5
-//NNTOOL_INPUT_SCALE_FLOAT -> 1.9372712
+// DCT_NORMALIZATION        -> np.sqrt(1/(N_DCT))*0.5
+// NNTOOL_INPUT_SCALE_FLOAT -> 1.9372712
 // SCALE = NNTOOL_INPUT_SCALE_FLOAT*DCT_NORMALIZATION
 #define  INPUT_SCALE        236
 #define  INPUT_SCALEN       16
@@ -28,20 +40,7 @@
 #define BUFF_SIZE (NB_ELEM*2)
 #define ITER    2
 
-char *WavName = NULL;
-char *AudioIn;
-char *AudioOut;
-
- 
-int off_shift = 0;
 AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
-
-int num_samples;
-short int *inSig;
-short int *outSig;
-int count, idx, end1, end2;
-int rec_digit;
-int prev = -1;
 
 #ifdef GAPUINO
     struct pi_device gpio;
@@ -50,8 +49,58 @@ int prev = -1;
     int iter = 0;
 #endif
 
+// input oputput signals dynamically allocated
+#if IS_FAKE_SIGNAL_IN == 1
+    #define TOT_FRAMES 1
+#else 
+    // allocate space to load the input signal
+    #define AUDIO_BUFFER_SIZE ((TOT_FRAMES+NUM_FRAME_OVERLAP)*FRAME_STEP)
+    char *WavName = NULL;
+    PI_L2 short int inSig[AUDIO_BUFFER_SIZE];
+    PI_L2 short int outSigt[AUDIO_BUFFER_SIZE];
+#endif
 
+#define DATATYPE_SIGNAL f16
 
+// computation buffers
+PI_L2 DATATYPE_SIGNAL AudioIn[FRAME_SIZE];
+PI_L2 DATATYPE_SIGNAL STFT_Spectrogram_in[AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2];
+PI_L2 DATATYPE_SIGNAL STFT_Spectrogram_out[AT_INPUT_WIDTH*AT_INPUT_HEIGHT];
+PI_L2 DATATYPE_SIGNAL AudioOut[FRAME_SIZE];
+
+static void RunMel()
+{
+#ifdef PERF
+    gap_cl_starttimer();
+    gap_cl_resethwtimer();
+#endif
+    unsigned int ta = gap_cl_readhwtimer();
+
+//    STFT(
+//        AudioIn, 
+//        STFT_Spectrogram_in, 
+//        R2_Twiddles_fix_256,   
+//        RFFT_Twiddles_fix_512,   
+//        R2_SwapTable_fix_256, 
+//        WinLUT
+//    );
+//    STFT(AudioIn, STFT_Spectrogram_in, R2_Twiddles_fix_256,   RFFT_Twiddles_fix_512,   R2_SwapTable_fix_256, WinLUT, PreempShift);
+//    STFT(AudioIn, STFT_Spectrogram_in, R2_Twiddles_float_256, RFFT_Twiddles_float_512, R2_SwapTable_fix_256, WinLUT_f32);
+    STFT(
+        AudioIn, 
+        STFT_Spectrogram_in, 
+        R4_Twiddles_f16_256,   
+        RFFT_Twiddles_f16_512,   
+        R4_SwapTable_fix_256, 
+        WinLUT_f16
+    );
+
+    
+    unsigned int ti = gap_cl_readhwtimer() - ta;
+
+    PRINTF("%45s: Cycles: %10d\n","LOG MEL: ", ti );
+
+}
 
 static void RunDenoiser()
 {
@@ -65,35 +114,14 @@ static void RunDenoiser()
 #ifdef GAPUINO
   pi_gpio_pin_write(&gpio, GPIO_OUT, 1 );
 #endif
-  __PREFIX(CNN)(AudioIn,  0, AudioOut);
+  __PREFIX(CNN)(STFT_Spectrogram_in,  0, STFT_Spectrogram_out);
 #ifdef GAPUINO
   pi_gpio_pin_write(&gpio, GPIO_OUT, 0);
 #endif
-  //Checki Results
-//  rec_digit = 0;
-//  int highest = ResOut[0];
-//  PRINTF("Results: \n");
-//  for(int i = 0; i < NUM_CLASSES; i++) {
-//    if(ResOut[i] > highest) {
-//      highest = ResOut[i];
-//      rec_digit = i;
-//    }
-//    PRINTF("class %d: %d\n", i, ResOut[i]);
-//  }
-//  if (highest<20000 && rec_digit!=0) rec_digit = 1;
-//  if (prev>0 && rec_digit!=prev) rec_digit = 1;
-//  prev = rec_digit;
-//
-//  if(rec_digit>1)
-//    printf("Recognized: %s\twith confidence: %d\n", LABELS[rec_digit], highest);
-//
-//#ifdef PERF
-//    if (rec_digit!=8){
-//        printf("App didn't recognize ON with %s test sample\n", WavName);
-//        pmsis_exit(-1);
-//    }
-//#endif
 }
+
+
+
 
 
 void denoiser(void)
@@ -102,8 +130,9 @@ void denoiser(void)
     uint32_t voltage =1200;
     pi_freq_set(PI_FREQ_DOMAIN_FC, FREQ_FC*1000*1000);
     pi_freq_set(PI_FREQ_DOMAIN_CL, FREQ_CL*1000*1000);
+//    pi_freq_set(PI_FREQ_DOMAIN_PERIPH, 300*1000*1000);
     //PMU_set_voltage(voltage, 0);
-    printf("Set VDD voltage as %.2f, FC Frequency as %d MHz, CL Frequency = %d MHz\n", 
+    PRINTF("Set VDD voltage as %.2f, FC Frequency as %d MHz, CL Frequency = %d MHz\n", 
         (float)voltage/1000, FREQ_FC, FREQ_CL);
 //    pulp_write32(0x1A10414C,1);   // what is this?
 
@@ -115,7 +144,7 @@ void denoiser(void)
     int errors = pi_gpio_open(&gpio);
     if (errors)
     {
-        printf("Error opening GPIO %d\n", errors);
+        PRINTF("Error opening GPIO %d\n", errors);
         pmsis_exit(errors);
     }
     /* Configure gpio input. */
@@ -124,7 +153,9 @@ void denoiser(void)
 
     pi_gpio_pin_write(&gpio, GPIO_OUT, 0);
 #endif
-    printf("Entering main controller\n");
+
+
+    PRINTF("Entering main controller\n");
     /* Configure And open cluster. */
     struct pi_device cluster_dev;
     struct pi_cluster_conf cl_conf;
@@ -132,43 +163,84 @@ void denoiser(void)
     pi_open_from_conf(&cluster_dev, (void *) &cl_conf);
     if (pi_cluster_open(&cluster_dev))
     {
-        printf("Cluster open failed !\n");
+        PRINTF("Cluster open failed !\n");
         pmsis_exit(-4);
     }
-    
-    // this are the input output
-    AudioIn       = (char *)      pi_l2_malloc(AT_INPUT_WIDTH * AT_INPUT_HEIGHT * sizeof(char));
-    AudioOut      = (char *)      pi_l2_malloc(AT_INPUT_WIDTH * AT_INPUT_HEIGHT * sizeof(char));
-    if (AudioIn==NULL || AudioOut==NULL ){
-        printf("Error allocating output\n");
+
+#if IS_FAKE_SIGNAL_IN == 1
+
+    // load fake data into AudioIn: a single frame of lenght FRAME_SIZE
+    for (int i=0;i<FRAME_SIZE;i++){
+        AudioIn[i] = 0;
+    }
+#else
+    printf("Reading wav...\n");
+    header_struct header_info;
+    if (ReadWavFromFile("../../../samples/sample_0000.wav", inSig, AUDIO_BUFFER_SIZE*sizeof(float), &header_info)){
+        printf("Error reading wav file\n");
         pmsis_exit(1);
     }
+    int num_samples = header_info.DataSize * 8 / (header_info.NumChannels * header_info.BitsPerSample);
+    printf("Num Samples: %d\n",num_samples);
+    printf("BitsPerSample: %d\n",header_info.BitsPerSample);
 
-    // IMPORTANT - MUST BE CALLED AFTER THE CLUSTER IS SWITCHED ON!!!!
-    printf("\n\nConstructor\n");
+    printf("Finished Read wav.\n");
+
+    // Cast if needed
+    for (int i= 0 ; i<FRAME_SIZE; i++){
+//        printf("%f", ((float)inSig[i])/(1<<15) );
+        AudioIn[i] = ((DATATYPE_SIGNAL) inSig[i] )/(1<<15);
+//        printf("\t%f\n", AudioIn[i] );
+    }
+#endif
+
+    /******
+        MFCC Task
+    ******/
+    PRINTF("\n\n****** STFT ***** \n");
+    struct pi_cluster_task *task_stft = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
+    if (!task_stft) {
+        PRINTF("failed to allocate memory for task\n");
+    }
+
+    memset(task_stft, 0, sizeof(struct pi_cluster_task));
+    task_stft->entry = &RunMel;
+    task_stft->stack_size = STACK_SIZE;
+    task_stft->slave_stack_size = SLAVE_STACK_SIZE;
+    task_stft->arg = NULL;
+
+    L1_Memory = pmsis_l1_malloc(_L1_Memory_SIZE);
+    if (L1_Memory==NULL){
+        printf("Error allocating L1\n");
+        pmsis_exit(-1);
+    }
+
+    pi_cluster_send_task_to_cl(&cluster_dev, task_stft);
+    pmsis_l1_malloc_free(L1_Memory,_L1_Memory_SIZE);
+
+    // check spectrogram results
+    for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2; i++ ){
+        printf("%f, ",STFT_Spectrogram_in[i]);
+        
+    }
+
+    /******
+        NN Denoiser Task
+    ******/
+    PRINTF("\n\n****** Denoiser ***** \n");
+
+    PRINTF("\n\nConstructor\n");
     int err_construct = __PREFIX(CNN_Construct)();
     if (err_construct)
     {
-        printf("Graph constructor exited with error: %d\n", err_construct);
+        PRINTF("Graph constructor exited with error: %d\n", err_construct);
         pmsis_exit(-5);
     }
-
-
-
-    // read data from file
-    header_struct header_info;
-    printf("Reading the wav file\n");
-//    if (ReadWavFromFile(WavName, AudioIn, AT_INPUT_WIDTH*sizeof(short int), &header_info)){
-//        printf("Error reading wav file\n");
-//        pmsis_exit(1);
-//    }
-//    num_samples = header_info.DataSize * 8 / (header_info.NumChannels * header_info.BitsPerSample);
-//    printf("Number of samples: %d\n", num_samples);
 
     PRINTF("Call cluster\n");
 	struct pi_cluster_task *task_net = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
 	if(task_net==NULL) {
-	  printf("pi_cluster_task alloc Error!\n");
+	  PRINTF("pi_cluster_task alloc Error!\n");
 	  pmsis_exit(-1);
 	}
 	//PRINTF("Stack size is %d and %d\n",STACK_SIZE,SLAVE_STACK_SIZE );
@@ -182,23 +254,20 @@ void denoiser(void)
     #ifdef PERF
     {
         unsigned int TotalCycles = 0, TotalOper = 0;
-        printf("\n");
+        PRINTF("\n");
         for (int i=0; i<(sizeof(AT_GraphPerf)/sizeof(unsigned int)); i++) {
-            printf("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n", AT_GraphNodeNames[i],
+            PRINTF("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n", AT_GraphNodeNames[i],
                    AT_GraphPerf[i], AT_GraphOperInfosNames[i], ((float) AT_GraphOperInfosNames[i])/ AT_GraphPerf[i]);
             TotalCycles += AT_GraphPerf[i]; TotalOper += AT_GraphOperInfosNames[i];
         }
-        printf("\n");
-        printf("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n", "Total", TotalCycles, TotalOper, ((float) TotalOper)/ TotalCycles);
-        printf("\n");
+        PRINTF("\n");
+        PRINTF("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n", "Total", TotalCycles, TotalOper, ((float) TotalOper)/ TotalCycles);
+        PRINTF("\n");
     }
     #endif  /* PERF */
 
-
     __PREFIX(CNN_Destruct)();
 
-    pi_l2_free(AudioIn,     AT_INPUT_WIDTH * AT_INPUT_HEIGHT * sizeof(char) );
-    pi_l2_free(AudioOut,    AT_INPUT_WIDTH * AT_INPUT_HEIGHT * sizeof(char) );
     // Close the cluster
     pi_cluster_close(&cluster_dev);
     PRINTF("Ended\n");
@@ -208,10 +277,12 @@ void denoiser(void)
 
 int main()
 {
-	PRINTF("\n\n\t *** KWS ***\n\n");
+	PRINTF("\n\n\t *** Denoiser ***\n\n");
 
     #define __XSTR(__s) __STR(__s)
     #define __STR(__s) #__s
+#if IS_FAKE_SIGNAL_IN == 0
     WavName = __XSTR(AT_WAV);
+#endif    
     return pmsis_kickoff((void *) denoiser);
 }
