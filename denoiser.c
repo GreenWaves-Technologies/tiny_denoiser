@@ -64,7 +64,7 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 
 // computation buffers
 PI_L2 DATATYPE_SIGNAL AudioIn[FRAME_SIZE];
-PI_L2 DATATYPE_SIGNAL STFT_Spectrogram_in[AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2];
+PI_L2 DATATYPE_SIGNAL STFT_Spectrogram_in[AT_INPUT_WIDTH*AT_INPUT_HEIGHT*4];
 PI_L2 DATATYPE_SIGNAL STFT_Spectrogram_out[AT_INPUT_WIDTH*AT_INPUT_HEIGHT];
 PI_L2 DATATYPE_SIGNAL AudioOut[FRAME_SIZE];
 
@@ -102,6 +102,7 @@ static void RunMel()
 
 }
 
+PI_L2 int ResetLSTM;
 static void RunDenoiser()
 {
 // L1_Memory = __PREFIX(_L1_Memory);
@@ -114,14 +115,42 @@ static void RunDenoiser()
 #ifdef GAPUINO
   pi_gpio_pin_write(&gpio, GPIO_OUT, 1 );
 #endif
-  __PREFIX(CNN)(STFT_Spectrogram_in,  0, STFT_Spectrogram_out);
+
+  __PREFIX(CNN)(STFT_Spectrogram_in,  ResetLSTM, STFT_Spectrogram_out);
 #ifdef GAPUINO
   pi_gpio_pin_write(&gpio, GPIO_OUT, 0);
 #endif
 }
 
 
+int ReadTFFromFile(char *FileName, float* OutBuf, unsigned int NumSamples) 
+{
+    switch_file_t File = (switch_file_t) 0;
+    switch_fs_t fs;
+    __FS_INIT(fs);
+    File = __OPEN_READ(fs, FileName);
+    if (File == 0) {
+        printf("Failed to open file, %s\n", FileName); goto Fail;
+    }
 
+    int TotBytes = sizeof(float)*NumSamples;
+    int len = __READ(File, OutBuf, TotBytes);
+    if (len != TotBytes) return 1;
+
+
+    __CLOSE(File);
+    __FS_DEINIT(fs);
+    PRINTF("\n\nFile: %s, FileSize: %d\n", \
+            FileName, TotBytes);
+
+    return 0;
+Fail:
+    __CLOSE(File);
+    __FS_DEINIT(fs);
+    printf("Failed to load file %s from flash\n", FileName);
+    return 1;
+
+}
 
 
 void denoiser(void)
@@ -167,24 +196,29 @@ void denoiser(void)
         pmsis_exit(-4);
     }
 
-#if IS_FAKE_SIGNAL_IN == 1
 
+    // Reset LSTM
+    ResetLSTM = 1;
+
+#if IS_STFT_FILE_STREAM == 0 ///load the input audio signal and compute the MFCC
+
+#if IS_FAKE_SIGNAL_IN == 1
     // load fake data into AudioIn: a single frame of lenght FRAME_SIZE
     for (int i=0;i<FRAME_SIZE;i++){
         AudioIn[i] = 0;
     }
 #else
-    printf("Reading wav...\n");
+    PRINTF("Reading wav...\n");
     header_struct header_info;
     if (ReadWavFromFile("../../../samples/sample_0000.wav", inSig, AUDIO_BUFFER_SIZE*sizeof(float), &header_info)){
-        printf("Error reading wav file\n");
+        PRINTF("Error reading wav file\n");
         pmsis_exit(1);
     }
     int num_samples = header_info.DataSize * 8 / (header_info.NumChannels * header_info.BitsPerSample);
-    printf("Num Samples: %d\n",num_samples);
-    printf("BitsPerSample: %d\n",header_info.BitsPerSample);
+    PRINTF("Num Samples: %d\n",num_samples);
+    PRINTF("BitsPerSample: %d\n",header_info.BitsPerSample);
 
-    printf("Finished Read wav.\n");
+    PRINTF("Finished Read wav.\n");
 
     // Cast if needed
     for (int i= 0 ; i<FRAME_SIZE; i++){
@@ -193,11 +227,12 @@ void denoiser(void)
 //        printf("\t%f\n", AudioIn[i] );
     }
 #endif
-
     /******
         MFCC Task
     ******/
-    PRINTF("\n\n****** STFT ***** \n");
+    PRINTF("\n\n****** Computing STFT ***** \n");
+    // compute mfcc if not read from file
+
     struct pi_cluster_task *task_stft = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
     if (!task_stft) {
         PRINTF("failed to allocate memory for task\n");
@@ -221,53 +256,90 @@ void denoiser(void)
     // check spectrogram results
     for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2; i++ ){
         printf("%f, ",STFT_Spectrogram_in[i]);
-        
     }
+#else ///load the STFT
 
-    /******
-        NN Denoiser Task
-    ******/
-    PRINTF("\n\n****** Denoiser ***** \n");
-
-    PRINTF("\n\nConstructor\n");
-    int err_construct = __PREFIX(CNN_Construct)();
-    if (err_construct)
-    {
-        PRINTF("Graph constructor exited with error: %d\n", err_construct);
-        pmsis_exit(-5);
+#if IS_FAKE_SIGNAL_IN == 1
+    // load fake data into STFT_Spectrogram_in
+    PRINTF("Loading a fake zeroed STFT...\n");
+    for (int i=0;i<AT_INPUT_WIDTH*AT_INPUT_HEIGHT;i++){
+        STFT_Spectrogram_in[i] = 0;
     }
+#else
+    for(int frame_id = 0; frame_id<TOT_FRAMES; frame_id++){
 
-    PRINTF("Call cluster\n");
-	struct pi_cluster_task *task_net = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
-	if(task_net==NULL) {
-	  PRINTF("pi_cluster_task alloc Error!\n");
-	  pmsis_exit(-1);
-	}
-	//PRINTF("Stack size is %d and %d\n",STACK_SIZE,SLAVE_STACK_SIZE );
-	memset(task_net, 0, sizeof(struct pi_cluster_task));
-	task_net->entry = &RunDenoiser;
-	task_net->stack_size = STACK_SIZE;
-	task_net->slave_stack_size = SLAVE_STACK_SIZE;
-	task_net->arg = NULL;
-	pi_cluster_send_task_to_cl(&cluster_dev, task_net);
+        PRINTF("Reading STFT file %.4d/%d...\n", frame_id, TOT_FRAMES );
+        sprintf(WavName, "../../../samples/mags_%.4d.bin",frame_id);
+        printf("File being read is : %s\n", WavName);
+        ReadTFFromFile(WavName, STFT_Spectrogram_in, AT_INPUT_WIDTH);
 
-    #ifdef PERF
-    {
-        unsigned int TotalCycles = 0, TotalOper = 0;
-        PRINTF("\n");
-        for (int i=0; i<(sizeof(AT_GraphPerf)/sizeof(unsigned int)); i++) {
-            PRINTF("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n", AT_GraphNodeNames[i],
-                   AT_GraphPerf[i], AT_GraphOperInfosNames[i], ((float) AT_GraphOperInfosNames[i])/ AT_GraphPerf[i]);
-            TotalCycles += AT_GraphPerf[i]; TotalOper += AT_GraphOperInfosNames[i];
+        float * spectrogram_fp32 = (float *)STFT_Spectrogram_in;
+        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
+            printf("%f ",spectrogram_fp32[i]);
+            STFT_Spectrogram_in[i] = (f16) spectrogram_fp32[i];
+            printf("(%f), ",STFT_Spectrogram_in[i]);
         }
-        PRINTF("\n");
-        PRINTF("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n", "Total", TotalCycles, TotalOper, ((float) TotalOper)/ TotalCycles);
-        PRINTF("\n");
-    }
-    #endif  /* PERF */
+#endif 
 
-    __PREFIX(CNN_Destruct)();
+#endif
 
+        /******
+            NN Denoiser Task
+        ******/
+        PRINTF("\n\n****** Denoiser ***** \n");
+
+        PRINTF("\n\nConstructor\n");
+        int err_construct = __PREFIX(CNN_Construct)();
+        if (err_construct)
+        {
+            PRINTF("Graph constructor exited with error: %d\n", err_construct);
+            pmsis_exit(-5);
+        }
+        printf("The memory base is: %x\n",denoiser_L1_Memory);
+
+
+        PRINTF("Call cluster\n");
+    	struct pi_cluster_task *task_net = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
+    	if(task_net==NULL) {
+    	  PRINTF("pi_cluster_task alloc Error!\n");
+    	  pmsis_exit(-1);
+    	}
+    	//PRINTF("Stack size is %d and %d\n",STACK_SIZE,SLAVE_STACK_SIZE );
+    	memset(task_net, 0, sizeof(struct pi_cluster_task));
+    	task_net->entry = &RunDenoiser;
+    	task_net->stack_size = STACK_SIZE;
+    	task_net->slave_stack_size = SLAVE_STACK_SIZE;
+    	task_net->arg = NULL;
+    	pi_cluster_send_task_to_cl(&cluster_dev, task_net);
+
+        printf("\n Denoiser Output\n");
+        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
+            printf("%f, ",STFT_Spectrogram_out[i]);
+        }
+
+        #ifdef PERF
+        {
+            unsigned int TotalCycles = 0, TotalOper = 0;
+            PRINTF("\n");
+            for (int i=0; i<(sizeof(AT_GraphPerf)/sizeof(unsigned int)); i++) {
+                PRINTF("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n", AT_GraphNodeNames[i],
+                       AT_GraphPerf[i], AT_GraphOperInfosNames[i], ((float) AT_GraphOperInfosNames[i])/ AT_GraphPerf[i]);
+                TotalCycles += AT_GraphPerf[i]; TotalOper += AT_GraphOperInfosNames[i];
+            }
+            PRINTF("\n");
+            PRINTF("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n", "Total", TotalCycles, TotalOper, ((float) TotalOper)/ TotalCycles);
+            PRINTF("\n");
+        }
+        #endif  /* PERF */
+
+        __PREFIX(CNN_Destruct)();
+
+        // Deassert Reset LSTM
+        ResetLSTM = 0;
+
+#if IS_STFT_FILE_STREAM == 1
+    }   // stop looping over frames
+#endif
     // Close the cluster
     pi_cluster_close(&cluster_dev);
     PRINTF("Ended\n");
@@ -281,8 +353,8 @@ int main()
 
     #define __XSTR(__s) __STR(__s)
     #define __STR(__s) #__s
-#if IS_FAKE_SIGNAL_IN == 0
-    WavName = __XSTR(AT_WAV);
-#endif    
+//#if IS_FAKE_SIGNAL_IN == 0
+//    WavName = __XSTR(AT_WAV);
+//#endif    
     return pmsis_kickoff((void *) denoiser);
 }
