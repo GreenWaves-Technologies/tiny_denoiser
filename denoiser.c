@@ -11,17 +11,10 @@
 #include "Gap.h"
 #include "denoiser.h"
 #include "wavIO.h"
-#include "denoiserKernels.h"
+#include "fs_switch.h"
 
 #include "RFFTKernels.h"
-#include "TwiddlesDef.h"
-#include "RFFTTwiddlesDef.h"
-#include "SwapTablesDef.h"
-#include "WinLUT.def"
-#include "WinLUT_f32.def"
-#ifdef __gap9__
-#include "WinLUT_f16.def"
-#endif
+#include "denoiserKernels.h"
 
 
 
@@ -49,6 +42,21 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
     int iter = 0;
 #endif
 
+
+
+#define DATATYPE_SIGNAL f16
+
+#if IS_STFT_FILE_STREAM == 0 ///load the input audio signal and compute the MFCC
+
+    #include "TwiddlesDef.h"
+    #include "RFFTTwiddlesDef.h"
+    #include "SwapTablesDef.h"
+    #include "WinLUT.def"
+    #include "WinLUT_f32.def"
+    #ifdef __gap9__
+    #include "WinLUT_f16.def"
+    #endif
+
 // input oputput signals dynamically allocated
 #if IS_FAKE_SIGNAL_IN == 1
     #define TOT_FRAMES 1
@@ -60,13 +68,29 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
     PI_L2 short int outSigt[AUDIO_BUFFER_SIZE];
 #endif
 
-#define DATATYPE_SIGNAL f16
+#else
+    // here the allocation in caso of stft inputs
+    #if IS_FAKE_SIGNAL_IN == 1
+        #define TOT_FRAMES 1
+    #else 
+        // allocate space to load the input signal
+        char *WavName = NULL;
+    #endif
+#endif
+
 
 // computation buffers
 PI_L2 DATATYPE_SIGNAL AudioIn[FRAME_SIZE];
 PI_L2 DATATYPE_SIGNAL STFT_Spectrogram_in[AT_INPUT_WIDTH*AT_INPUT_HEIGHT*4];
 PI_L2 DATATYPE_SIGNAL STFT_Spectrogram_out[AT_INPUT_WIDTH*AT_INPUT_HEIGHT];
 PI_L2 DATATYPE_SIGNAL AudioOut[FRAME_SIZE];
+
+PI_L2 DATATYPE_SIGNAL LSTM_STATE_0_I[257];
+PI_L2 DATATYPE_SIGNAL LSTM_STATE_0_C[257];
+PI_L2 DATATYPE_SIGNAL LSTM_STATE_1_I[257];
+PI_L2 DATATYPE_SIGNAL LSTM_STATE_1_C[257];
+
+#if IS_STFT_FILE_STREAM == 0 ///load the input audio signal and compute the MFCC
 
 static void RunMel()
 {
@@ -102,6 +126,8 @@ static void RunMel()
 
 }
 
+#endif
+
 PI_L2 int ResetLSTM;
 static void RunDenoiser()
 {
@@ -116,7 +142,16 @@ static void RunDenoiser()
   pi_gpio_pin_write(&gpio, GPIO_OUT, 1 );
 #endif
 
-  __PREFIX(CNN)(STFT_Spectrogram_in,  ResetLSTM, STFT_Spectrogram_out);
+  __PREFIX(CNN)(
+        STFT_Spectrogram_in,  
+        LSTM_STATE_0_I,
+        LSTM_STATE_0_C,
+        LSTM_STATE_1_I,
+        LSTM_STATE_1_C,
+        ResetLSTM, 
+        STFT_Spectrogram_out
+    );
+
 #ifdef GAPUINO
   pi_gpio_pin_write(&gpio, GPIO_OUT, 0);
 #endif
@@ -152,6 +187,8 @@ Fail:
 
 }
 
+switch_file_t File = (switch_file_t) 0;
+switch_fs_t fs;
 
 void denoiser(void)
 {
@@ -259,6 +296,19 @@ void denoiser(void)
     }
 #else ///load the STFT
 
+    printf("Setup Cluster Task for inference!\n");
+    struct pi_cluster_task *task_net = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
+    if(task_net==NULL) {
+      PRINTF("pi_cluster_task alloc Error!\n");
+      pmsis_exit(-1);
+    }
+    PRINTF("Stack size is %d and %d\n",STACK_SIZE,SLAVE_STACK_SIZE );
+    memset(task_net, 0, sizeof(struct pi_cluster_task));
+    task_net->entry = &RunDenoiser;
+    task_net->stack_size = STACK_SIZE;
+    task_net->slave_stack_size = SLAVE_STACK_SIZE;
+    task_net->arg = NULL;
+
 #if IS_FAKE_SIGNAL_IN == 1
     // load fake data into STFT_Spectrogram_in
     PRINTF("Loading a fake zeroed STFT...\n");
@@ -266,12 +316,34 @@ void denoiser(void)
         STFT_Spectrogram_in[i] = 0;
     }
 #else
+
+    // open FS
+//    switch_file_t File = (switch_file_t) 0;
+//    switch_fs_t fs;
+    __FS_INIT(fs);
+
     for(int frame_id = 0; frame_id<TOT_FRAMES; frame_id++){
 
         PRINTF("Reading STFT file %.4d/%d...\n", frame_id, TOT_FRAMES );
         sprintf(WavName, "../../../samples/mags_%.4d.bin",frame_id);
         printf("File being read is : %s\n", WavName);
-        ReadTFFromFile(WavName, STFT_Spectrogram_in, AT_INPUT_WIDTH);
+
+        File = __OPEN_READ(fs, WavName);
+        if (File == 0) {
+            printf("Failed to open file, %s\n", WavName); 
+            pmsis_exit(7);
+        }
+        printf("File %x of size %d\n", File, sizeof(switch_file_t));
+
+        int TotBytes = sizeof(float)*AT_INPUT_WIDTH;
+        int len = __READ(File, STFT_Spectrogram_in, TotBytes);
+        if (len != TotBytes){
+            printf("Too few bytes in %s\n", WavName); 
+            pmsis_exit(8);
+        } 
+        __CLOSE(File);
+
+//        ReadTFFromFile(WavName, STFT_Spectrogram_in, AT_INPUT_WIDTH);
 
         float * spectrogram_fp32 = (float *)STFT_Spectrogram_in;
         for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
@@ -282,7 +354,6 @@ void denoiser(void)
 #endif 
 
 #endif
-
         /******
             NN Denoiser Task
         ******/
@@ -299,18 +370,7 @@ void denoiser(void)
 
 
         PRINTF("Call cluster\n");
-    	struct pi_cluster_task *task_net = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
-    	if(task_net==NULL) {
-    	  PRINTF("pi_cluster_task alloc Error!\n");
-    	  pmsis_exit(-1);
-    	}
-    	//PRINTF("Stack size is %d and %d\n",STACK_SIZE,SLAVE_STACK_SIZE );
-    	memset(task_net, 0, sizeof(struct pi_cluster_task));
-    	task_net->entry = &RunDenoiser;
-    	task_net->stack_size = STACK_SIZE;
-    	task_net->slave_stack_size = SLAVE_STACK_SIZE;
-    	task_net->arg = NULL;
-    	pi_cluster_send_task_to_cl(&cluster_dev, task_net);
+   	    pi_cluster_send_task_to_cl(&cluster_dev, task_net);
 
         printf("\n Denoiser Output\n");
         for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
@@ -337,8 +397,11 @@ void denoiser(void)
         // Deassert Reset LSTM
         ResetLSTM = 0;
 
+#if IS_FAKE_SIGNAL_IN == 0
 #if IS_STFT_FILE_STREAM == 1
-    }   // stop looping over frames
+
+   }   // stop looping over frames
+#endif
 #endif
     // Close the cluster
     pi_cluster_close(&cluster_dev);
