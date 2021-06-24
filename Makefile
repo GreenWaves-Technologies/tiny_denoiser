@@ -13,6 +13,7 @@ endif
 
 # Quantization Mode
 QUANT_BITS?=FP16
+SILENT?=0
 ifeq 		'$(QUANT_BITS)' '8'
 	NNTOOL_SCRIPT=model/nntool_script_8
 	MODEL_SQ8=1
@@ -180,6 +181,10 @@ else
 	APP_CFLAGS += -DPERF #-DFROM_SENSOR -DSILENT
 endif
 
+ifeq ($(SILENT), 1)
+	APP_CFLAGS += -DSILENT
+endif
+
 READFS_FILES=$(abspath $(MODEL_TENSORS))
 
 
@@ -196,8 +201,8 @@ test_accuracy_tflite:
 # all depends on the model
 all:: model
 
-clean:: clean_model
-	rm -rf BUILD_MODEL*
+#clean:: clean_model
+#	rm -rf BUILD_MODEL*
 
 include common/model_rules.mk
 

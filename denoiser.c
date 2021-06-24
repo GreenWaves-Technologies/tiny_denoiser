@@ -347,9 +347,9 @@ void denoiser(void)
 
         float * spectrogram_fp32 = (float *)STFT_Spectrogram_in;
         for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-            printf("%f ",spectrogram_fp32[i]);
+            PRINTF("%f ",spectrogram_fp32[i]);
             STFT_Spectrogram_in[i] = (f16) spectrogram_fp32[i];
-            printf("(%f), ",STFT_Spectrogram_in[i]);
+            PRINTF("(%f), ",STFT_Spectrogram_in[i]);
         }
 #endif 
 
@@ -372,9 +372,9 @@ void denoiser(void)
         PRINTF("Call cluster\n");
    	    pi_cluster_send_task_to_cl(&cluster_dev, task_net);
 
-        printf("\n Denoiser Output\n");
+        PRINTF("\n Denoiser Output\n");
         for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-            printf("%f, ",STFT_Spectrogram_out[i]);
+            PRINTF("%f, ",STFT_Spectrogram_out[i]);
         }
 
         #ifdef PERF
