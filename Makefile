@@ -14,6 +14,7 @@ endif
 # Quantization Mode
 QUANT_BITS?=FP16
 SILENT?=0
+DEBUG?=0
 ifeq 		'$(QUANT_BITS)' '8'
 	NNTOOL_SCRIPT=model/nntool_script_8
 	MODEL_SQ8=1
@@ -54,7 +55,7 @@ NNTOOL_EXTRA_FLAGS =
 IS_FAKE_SIGNAL_IN=0
 IS_AUDIO_FILE?=0
 IS_AUDIO_FILE_STREAM?=0
-IS_STFT_FILE_STREAM?=1
+IS_STFT_FILE_STREAM?=0
 
 WAV_PATH = $(CURDIR)/samples/
 WAV_SIGNAL_NAME=test.wav
@@ -82,7 +83,7 @@ ifeq '$(TARGET_CHIP)' 'GAP9_V2'
 	TOTAL_STACK_SIZE=$(shell expr $(CLUSTER_STACK_SIZE) \+ $(CLUSTER_SLAVE_STACK_SIZE) \* $(CLUSTER_NUM_CORES))
 	MODEL_L1_MEMORY=$(shell expr 120000 \- $(TOTAL_STACK_SIZE))
 #	MODEL_L2_MEMORY=1300000
-	MODEL_L2_MEMORY=1300000
+	MODEL_L2_MEMORY=1000000
 	MODEL_L3_MEMORY=8000000
 
 else
@@ -172,7 +173,6 @@ APP_CFLAGS += -DSAMPLING_FREQ=$(SAMPLING_FREQ)
 APP_CFLAGS += -DAT_INPUT_WIDTH=$(AT_INPUT_WIDTH)
 APP_CFLAGS += -DAT_INPUT_HEIGHT=$(AT_INPUT_HEIGHT)
 
-APP_CFLAGS += -DPRINTDEB
 
 
 ifeq ($(platform), gvsoc)
@@ -183,6 +183,10 @@ endif
 
 ifeq ($(SILENT), 1)
 	APP_CFLAGS += -DSILENT
+endif
+
+ifeq ($(DEBUG), 1)
+	APP_CFLAGS += -DPRINTDEB
 endif
 
 READFS_FILES=$(abspath $(MODEL_TENSORS))
@@ -199,10 +203,10 @@ test_accuracy_tflite:
 	python utils/test_accuracy_tflite.py --tflite_model $(TRAINED_TFLITE_MODEL) --dct_coefficient_count $(DCT_COUNT) --window_size_ms $(FRAME_SIZE) --window_stride_ms $(FRAME_STEP) --use_power_spectrogram $(USE_POWER)
 
 # all depends on the model
-all:: model
+all:: model #gen_fft_code
 
-#clean:: clean_model
-#	rm -rf BUILD_MODEL*
+clean:: clean_model clean_fft_code
+	rm -rf BUILD_MODEL*
 
 include common/model_rules.mk
 

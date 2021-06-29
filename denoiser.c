@@ -81,18 +81,18 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 
 // computation buffers
 PI_L2 DATATYPE_SIGNAL AudioIn[FRAME_SIZE];
-PI_L2 DATATYPE_SIGNAL STFT_Spectrogram_in[AT_INPUT_WIDTH*AT_INPUT_HEIGHT*4];
+PI_L2 DATATYPE_SIGNAL STFT_Spectrogram_in[AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2];
 PI_L2 DATATYPE_SIGNAL STFT_Spectrogram_out[AT_INPUT_WIDTH*AT_INPUT_HEIGHT];
 PI_L2 DATATYPE_SIGNAL AudioOut[FRAME_SIZE];
 
-PI_L2 DATATYPE_SIGNAL LSTM_STATE_0_I[257];
-PI_L2 DATATYPE_SIGNAL LSTM_STATE_0_C[257];
-PI_L2 DATATYPE_SIGNAL LSTM_STATE_1_I[257];
-PI_L2 DATATYPE_SIGNAL LSTM_STATE_1_C[257];
+//PI_L2 DATATYPE_SIGNAL LSTM_STATE_0_I[257];
+//PI_L2 DATATYPE_SIGNAL LSTM_STATE_0_C[257];
+//PI_L2 DATATYPE_SIGNAL LSTM_STATE_1_I[257];
+//PI_L2 DATATYPE_SIGNAL LSTM_STATE_1_C[257];
 
 #if IS_STFT_FILE_STREAM == 0 ///load the input audio signal and compute the MFCC
 
-static void RunMel()
+static void RunSTFT()
 {
 #ifdef PERF
     gap_cl_starttimer();
@@ -122,13 +122,52 @@ static void RunMel()
     
     unsigned int ti = gap_cl_readhwtimer() - ta;
 
-    PRINTF("%45s: Cycles: %10d\n","LOG MEL: ", ti );
+    PRINTF("%45s: Cycles: %10d\n","STFT: ", ti );
 
 }
+
+#include "istft_window.h"
+
+static void RuniSTFT()
+{
+#ifdef PERF
+    gap_cl_starttimer();
+    gap_cl_resethwtimer();
+#endif
+    unsigned int ta = gap_cl_readhwtimer();
+   
+    iSTFT(
+        STFT_Spectrogram_in, 
+        STFT_Spectrogram_in, 
+        R2_Twiddles_f16_256,   
+        RFFT_Twiddles_f16_512,   
+        R2_SwapTable_fix_256
+    );
+
+    
+    unsigned int ti = gap_cl_readhwtimer() - ta;
+    PRINTF("%45s: Cycles: %10d\n","iSTFT: ", ti );
+
+
+    ta = gap_cl_readhwtimer();
+    // applying inverse hanning windowing
+    for(int i=0;i<FRAME_SIZE;i++){
+//        printf("%f *", STFT_Spectrogram_in[i]);
+        AudioOut[i] = hanning_inv[i] * STFT_Spectrogram_in[i];
+//        printf(" %f(%f) --> %f\n", (DATATYPE_SIGNAL) hanning_inv[i],hanning_inv[i],AudioOut[i]);
+    }
+    
+    ti = gap_cl_readhwtimer() - ta;
+    PRINTF("%45s: Cycles: %10d\n","iHanning: ", ti );
+
+}
+
+
 
 #endif
 
 PI_L2 int ResetLSTM;
+
 static void RunDenoiser()
 {
 // L1_Memory = __PREFIX(_L1_Memory);
@@ -144,10 +183,10 @@ static void RunDenoiser()
 
   __PREFIX(CNN)(
         STFT_Spectrogram_in,  
-        LSTM_STATE_0_I,
-        LSTM_STATE_0_C,
-        LSTM_STATE_1_I,
-        LSTM_STATE_1_C,
+//        LSTM_STATE_0_I,
+//        LSTM_STATE_0_C,
+//        LSTM_STATE_1_I,
+//        LSTM_STATE_1_C,
         ResetLSTM, 
         STFT_Spectrogram_out
     );
@@ -202,6 +241,7 @@ void denoiser(void)
         (float)voltage/1000, FREQ_FC, FREQ_CL);
 //    pulp_write32(0x1A10414C,1);   // what is this?
 
+
 #ifdef GAPUINO
 	//configuring gpio
 	struct pi_gpio_conf gpio_conf = {0};
@@ -236,6 +276,23 @@ void denoiser(void)
 
     // Reset LSTM
     ResetLSTM = 1;
+    
+    /******
+        Setup inference task
+    ******/
+    printf("Setup Cluster Task for inference!\n");
+    struct pi_cluster_task *task_net = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
+    if(task_net==NULL) {
+      PRINTF("pi_cluster_task alloc Error!\n");
+      pmsis_exit(-1);
+    }
+    PRINTF("Stack size is %d and %d\n",STACK_SIZE,SLAVE_STACK_SIZE );
+    memset(task_net, 0, sizeof(struct pi_cluster_task));
+    task_net->entry = &RunDenoiser;
+    task_net->stack_size = STACK_SIZE;
+    task_net->slave_stack_size = SLAVE_STACK_SIZE;
+    task_net->arg = NULL;
+
 
 #if IS_STFT_FILE_STREAM == 0 ///load the input audio signal and compute the MFCC
 
@@ -258,10 +315,11 @@ void denoiser(void)
     PRINTF("Finished Read wav.\n");
 
     // Cast if needed
+    PRINTF("Audio In: ");
     for (int i= 0 ; i<FRAME_SIZE; i++){
 //        printf("%f", ((float)inSig[i])/(1<<15) );
         AudioIn[i] = ((DATATYPE_SIGNAL) inSig[i] )/(1<<15);
-//        printf("\t%f\n", AudioIn[i] );
+        PRINTF("%f, ", AudioIn[i] );
     }
 #endif
     /******
@@ -276,7 +334,7 @@ void denoiser(void)
     }
 
     memset(task_stft, 0, sizeof(struct pi_cluster_task));
-    task_stft->entry = &RunMel;
+    task_stft->entry = &RunSTFT;
     task_stft->stack_size = STACK_SIZE;
     task_stft->slave_stack_size = SLAVE_STACK_SIZE;
     task_stft->arg = NULL;
@@ -291,23 +349,35 @@ void denoiser(void)
     pmsis_l1_malloc_free(L1_Memory,_L1_Memory_SIZE);
 
     // check spectrogram results
+    PRINTF("\nSTFT OUT: ");
     for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2; i++ ){
         printf("%f, ",STFT_Spectrogram_in[i]);
     }
-#else ///load the STFT
+    PRINTF("\n");
 
-    printf("Setup Cluster Task for inference!\n");
-    struct pi_cluster_task *task_net = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
-    if(task_net==NULL) {
-      PRINTF("pi_cluster_task alloc Error!\n");
-      pmsis_exit(-1);
+
+    PRINTF("\n\n****** Computing iSTFT ***** \n");
+    // compute mfcc if not read from file
+    task_stft->entry = &RuniSTFT;
+
+    L1_Memory = pmsis_l1_malloc(_L1_Memory_SIZE);
+    if (L1_Memory==NULL){
+        printf("Error allocating L1\n");
+        pmsis_exit(-1);
     }
-    PRINTF("Stack size is %d and %d\n",STACK_SIZE,SLAVE_STACK_SIZE );
-    memset(task_net, 0, sizeof(struct pi_cluster_task));
-    task_net->entry = &RunDenoiser;
-    task_net->stack_size = STACK_SIZE;
-    task_net->slave_stack_size = SLAVE_STACK_SIZE;
-    task_net->arg = NULL;
+
+    pi_cluster_send_task_to_cl(&cluster_dev, task_stft);
+    pmsis_l1_malloc_free(L1_Memory,_L1_Memory_SIZE);
+
+    // check spectrogram results
+    PRINTF("\nAudio Out: ");
+    for (int i= 0 ; i<FRAME_SIZE; i++){
+//        printf("%f", ((float)inSig[i])/(1<<15) );
+        PRINTF("%f, ", AudioOut[i] );
+    }
+    PRINTF("\n");
+
+#else ///load the STFT
 
 #if IS_FAKE_SIGNAL_IN == 1
     // load fake data into STFT_Spectrogram_in
@@ -343,8 +413,6 @@ void denoiser(void)
         } 
         __CLOSE(File);
 
-//        ReadTFFromFile(WavName, STFT_Spectrogram_in, AT_INPUT_WIDTH);
-
         float * spectrogram_fp32 = (float *)STFT_Spectrogram_in;
         for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
             PRINTF("%f ",spectrogram_fp32[i]);
@@ -354,6 +422,7 @@ void denoiser(void)
 #endif 
 
 #endif
+
         /******
             NN Denoiser Task
         ******/

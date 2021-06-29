@@ -60,5 +60,14 @@ int main(int argc, char **argv)
       FLOAT16     // datatype
     );
 
+
+    IRFFT_2D_Generator(
+      "iSTFT",     // name 
+      0,          // ctrl
+      1,          // all the frames
+      N_FFT,      // Nfft
+      FLOAT16     // datatype
+    );
+
     GenerateTilingCode();
 }
