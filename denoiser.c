@@ -46,8 +46,8 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 
 #define DATATYPE_SIGNAL f16
 
-#if IS_STFT_FILE_STREAM == 0 ///load the input audio signal and compute the MFCC
-
+#if IS_INPUT_STFT == 0 
+    //load the input audio signal and compute the MFCC
     #include "TwiddlesDef.h"
     #include "RFFTTwiddlesDef.h"
     #include "SwapTablesDef.h"
@@ -80,17 +80,16 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 
 
 // computation buffers
-PI_L2 DATATYPE_SIGNAL AudioIn[FRAME_SIZE];
-PI_L2 DATATYPE_SIGNAL STFT_Spectrogram_in[AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2];
-PI_L2 DATATYPE_SIGNAL STFT_Spectrogram_out[AT_INPUT_WIDTH*AT_INPUT_HEIGHT];
-PI_L2 DATATYPE_SIGNAL AudioOut[FRAME_SIZE];
+PI_L2 DATATYPE_SIGNAL Audio_Frame[FRAME_NFFT];  // only first FRAME_SIZE samples (<FRAME_NFFT) are valid
+PI_L2 DATATYPE_SIGNAL STFT_Spectrogram[AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2];   // FIXME: must be double in case float values are loaded from file
+PI_L2 DATATYPE_SIGNAL STFT_Magnitude[AT_INPUT_WIDTH*AT_INPUT_HEIGHT];
 
 //PI_L2 DATATYPE_SIGNAL LSTM_STATE_0_I[257];
 //PI_L2 DATATYPE_SIGNAL LSTM_STATE_0_C[257];
 //PI_L2 DATATYPE_SIGNAL LSTM_STATE_1_I[257];
 //PI_L2 DATATYPE_SIGNAL LSTM_STATE_1_C[257];
 
-#if IS_STFT_FILE_STREAM == 0 ///load the input audio signal and compute the MFCC
+#if IS_INPUT_STFT == 0 ///load the input audio signal and compute the MFCC
 
 static void RunSTFT()
 {
@@ -101,18 +100,18 @@ static void RunSTFT()
     unsigned int ta = gap_cl_readhwtimer();
 
 //    STFT(
-//        AudioIn, 
-//        STFT_Spectrogram_in, 
+//        Audio_Frame, 
+//        STFT_Spectrogram, 
 //        R2_Twiddles_fix_256,   
 //        RFFT_Twiddles_fix_512,   
 //        R2_SwapTable_fix_256, 
 //        WinLUT
 //    );
-//    STFT(AudioIn, STFT_Spectrogram_in, R2_Twiddles_fix_256,   RFFT_Twiddles_fix_512,   R2_SwapTable_fix_256, WinLUT, PreempShift);
-//    STFT(AudioIn, STFT_Spectrogram_in, R2_Twiddles_float_256, RFFT_Twiddles_float_512, R2_SwapTable_fix_256, WinLUT_f32);
+//    STFT(Audio_Frame, STFT_Spectrogram, R2_Twiddles_fix_256,   RFFT_Twiddles_fix_512,   R2_SwapTable_fix_256, WinLUT, PreempShift);
+//    STFT(Audio_Frame, STFT_Spectrogram, R2_Twiddles_float_256, RFFT_Twiddles_float_512, R2_SwapTable_fix_256, WinLUT_f32);
     STFT(
-        AudioIn, 
-        STFT_Spectrogram_in, 
+        Audio_Frame, 
+        STFT_Spectrogram, 
         R4_Twiddles_f16_256,   
         RFFT_Twiddles_f16_512,   
         R4_SwapTable_fix_256, 
@@ -137,8 +136,8 @@ static void RuniSTFT()
     unsigned int ta = gap_cl_readhwtimer();
    
     iSTFT(
-        STFT_Spectrogram_in, 
-        STFT_Spectrogram_in, 
+        STFT_Spectrogram, 
+        STFT_Spectrogram, 
         R2_Twiddles_f16_256,   
         RFFT_Twiddles_f16_512,   
         R2_SwapTable_fix_256
@@ -152,9 +151,9 @@ static void RuniSTFT()
     ta = gap_cl_readhwtimer();
     // applying inverse hanning windowing
     for(int i=0;i<FRAME_SIZE;i++){
-//        printf("%f *", STFT_Spectrogram_in[i]);
-        AudioOut[i] = hanning_inv[i] * STFT_Spectrogram_in[i];
-//        printf(" %f(%f) --> %f\n", (DATATYPE_SIGNAL) hanning_inv[i],hanning_inv[i],AudioOut[i]);
+//        printf("%f *", STFT_Spectrogram[i]);
+        Audio_Frame[i] = hanning_inv[i] * STFT_Spectrogram[i];
+//        printf(" %f(%f) --> %f\n", (DATATYPE_SIGNAL) hanning_inv[i],hanning_inv[i],Audio_Frame[i]);
     }
     
     ti = gap_cl_readhwtimer() - ta;
@@ -182,13 +181,13 @@ static void RunDenoiser()
 #endif
 
   __PREFIX(CNN)(
-        STFT_Spectrogram_in,  
+        STFT_Magnitude,  
 //        LSTM_STATE_0_I,
 //        LSTM_STATE_0_C,
 //        LSTM_STATE_1_I,
 //        LSTM_STATE_1_C,
         ResetLSTM, 
-        STFT_Spectrogram_out
+        STFT_Magnitude
     );
 
 #ifdef GAPUINO
@@ -197,34 +196,6 @@ static void RunDenoiser()
 }
 
 
-int ReadTFFromFile(char *FileName, float* OutBuf, unsigned int NumSamples) 
-{
-    switch_file_t File = (switch_file_t) 0;
-    switch_fs_t fs;
-    __FS_INIT(fs);
-    File = __OPEN_READ(fs, FileName);
-    if (File == 0) {
-        printf("Failed to open file, %s\n", FileName); goto Fail;
-    }
-
-    int TotBytes = sizeof(float)*NumSamples;
-    int len = __READ(File, OutBuf, TotBytes);
-    if (len != TotBytes) return 1;
-
-
-    __CLOSE(File);
-    __FS_DEINIT(fs);
-    PRINTF("\n\nFile: %s, FileSize: %d\n", \
-            FileName, TotBytes);
-
-    return 0;
-Fail:
-    __CLOSE(File);
-    __FS_DEINIT(fs);
-    printf("Failed to load file %s from flash\n", FileName);
-    return 1;
-
-}
 
 switch_file_t File = (switch_file_t) 0;
 switch_fs_t fs;
@@ -274,9 +245,20 @@ void denoiser(void)
     }
 
 
-    // Reset LSTM
-    ResetLSTM = 1;
-    
+    /******
+        Setup STFT/ISTF task
+    ******/
+    struct pi_cluster_task *task_stft = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
+    if (!task_stft) {
+        PRINTF("failed to allocate memory for task\n");
+    }
+
+    memset(task_stft, 0, sizeof(struct pi_cluster_task));
+    task_stft->stack_size = STACK_SIZE;
+    task_stft->slave_stack_size = SLAVE_STACK_SIZE;
+    task_stft->arg = NULL;
+
+#ifndef NN_INF_NOT
     /******
         Setup inference task
     ******/
@@ -292,14 +274,22 @@ void denoiser(void)
     task_net->stack_size = STACK_SIZE;
     task_net->slave_stack_size = SLAVE_STACK_SIZE;
     task_net->arg = NULL;
+    
+    // Reset LSTM
+    ResetLSTM = 1;
+#endif
 
 
-#if IS_STFT_FILE_STREAM == 0 ///load the input audio signal and compute the MFCC
+#if IS_INPUT_STFT == 0 
+
+/****
+    load the input audio signal and compute the MFCC
+****/
 
 #if IS_FAKE_SIGNAL_IN == 1
-    // load fake data into AudioIn: a single frame of lenght FRAME_SIZE
+    // load fake data into Audio_Frame: a single frame of lenght FRAME_SIZE
     for (int i=0;i<FRAME_SIZE;i++){
-        AudioIn[i] = 0;
+        Audio_Frame[i] = 0;
     }
 #else
     PRINTF("Reading wav...\n");
@@ -318,26 +308,18 @@ void denoiser(void)
     PRINTF("Audio In: ");
     for (int i= 0 ; i<FRAME_SIZE; i++){
 //        printf("%f", ((float)inSig[i])/(1<<15) );
-        AudioIn[i] = ((DATATYPE_SIGNAL) inSig[i] )/(1<<15);
-        PRINTF("%f, ", AudioIn[i] );
+        Audio_Frame[i] = ((DATATYPE_SIGNAL) inSig[i] )/(1<<15);
+        PRINTF("%f, ", Audio_Frame[i] );
     }
 #endif
+
     /******
         MFCC Task
     ******/
-    PRINTF("\n\n****** Computing STFT ***** \n");
     // compute mfcc if not read from file
 
-    struct pi_cluster_task *task_stft = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
-    if (!task_stft) {
-        PRINTF("failed to allocate memory for task\n");
-    }
-
-    memset(task_stft, 0, sizeof(struct pi_cluster_task));
+    PRINTF("\n\n****** Computing STFT ***** \n");
     task_stft->entry = &RunSTFT;
-    task_stft->stack_size = STACK_SIZE;
-    task_stft->slave_stack_size = SLAVE_STACK_SIZE;
-    task_stft->arg = NULL;
 
     L1_Memory = pmsis_l1_malloc(_L1_Memory_SIZE);
     if (L1_Memory==NULL){
@@ -351,29 +333,7 @@ void denoiser(void)
     // check spectrogram results
     PRINTF("\nSTFT OUT: ");
     for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2; i++ ){
-        printf("%f, ",STFT_Spectrogram_in[i]);
-    }
-    PRINTF("\n");
-
-
-    PRINTF("\n\n****** Computing iSTFT ***** \n");
-    // compute mfcc if not read from file
-    task_stft->entry = &RuniSTFT;
-
-    L1_Memory = pmsis_l1_malloc(_L1_Memory_SIZE);
-    if (L1_Memory==NULL){
-        printf("Error allocating L1\n");
-        pmsis_exit(-1);
-    }
-
-    pi_cluster_send_task_to_cl(&cluster_dev, task_stft);
-    pmsis_l1_malloc_free(L1_Memory,_L1_Memory_SIZE);
-
-    // check spectrogram results
-    PRINTF("\nAudio Out: ");
-    for (int i= 0 ; i<FRAME_SIZE; i++){
-//        printf("%f", ((float)inSig[i])/(1<<15) );
-        PRINTF("%f, ", AudioOut[i] );
+        printf("%f, ",STFT_Spectrogram[i]);
     }
     PRINTF("\n");
 
@@ -383,13 +343,11 @@ void denoiser(void)
     // load fake data into STFT_Spectrogram_in
     PRINTF("Loading a fake zeroed STFT...\n");
     for (int i=0;i<AT_INPUT_WIDTH*AT_INPUT_HEIGHT;i++){
-        STFT_Spectrogram_in[i] = 0;
+        STFT_Spectrogram[i] = 0;
     }
 #else
 
-    // open FS
-//    switch_file_t File = (switch_file_t) 0;
-//    switch_fs_t fs;
+    // open FS and read the binary files with STFT (flaot values)
     __FS_INIT(fs);
 
     for(int frame_id = 0; frame_id<TOT_FRAMES; frame_id++){
@@ -406,23 +364,24 @@ void denoiser(void)
         printf("File %x of size %d\n", File, sizeof(switch_file_t));
 
         int TotBytes = sizeof(float)*AT_INPUT_WIDTH;
-        int len = __READ(File, STFT_Spectrogram_in, TotBytes);
+        int len = __READ(File, STFT_Spectrogram, TotBytes);
         if (len != TotBytes){
             printf("Too few bytes in %s\n", WavName); 
             pmsis_exit(8);
         } 
         __CLOSE(File);
 
-        float * spectrogram_fp32 = (float *)STFT_Spectrogram_in;
+        float * spectrogram_fp32 = (float *)STFT_Spectrogram;
         for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
             PRINTF("%f ",spectrogram_fp32[i]);
-            STFT_Spectrogram_in[i] = (f16) spectrogram_fp32[i];
-            PRINTF("(%f), ",STFT_Spectrogram_in[i]);
+            STFT_Spectrogram[i] = (f16) spectrogram_fp32[i];
+            PRINTF("(%f), ",STFT_Spectrogram[i]);
         }
 #endif 
 
 #endif
 
+#ifndef NN_INF_NOT
         /******
             NN Denoiser Task
         ******/
@@ -443,7 +402,7 @@ void denoiser(void)
 
         PRINTF("\n Denoiser Output\n");
         for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-            PRINTF("%f, ",STFT_Spectrogram_out[i]);
+            PRINTF("%f, ",STFT_Magnitude[i]);
         }
 
         #ifdef PERF
@@ -465,9 +424,35 @@ void denoiser(void)
 
         // Deassert Reset LSTM
         ResetLSTM = 0;
+#endif  // disable nn inference
+
+    /******
+        ISTF Task
+    ******/
+    PRINTF("\n\n****** Computing iSTFT ***** \n");
+    // compute mfcc if not read from file
+    task_stft->entry = &RuniSTFT;
+
+    L1_Memory = pmsis_l1_malloc(_L1_Memory_SIZE);
+    if (L1_Memory==NULL){
+        printf("Error allocating L1\n");
+        pmsis_exit(-1);
+    }
+
+    pi_cluster_send_task_to_cl(&cluster_dev, task_stft);
+    pmsis_l1_malloc_free(L1_Memory,_L1_Memory_SIZE);
+
+    // check spectrogram results
+    PRINTF("\nAudio Out: ");
+    for (int i= 0 ; i<FRAME_SIZE; i++){
+//        printf("%f", ((float)inSig[i])/(1<<15) );
+        PRINTF("%f, ", Audio_Frame[i] );
+    }
+    PRINTF("\n");
+
 
 #if IS_FAKE_SIGNAL_IN == 0
-#if IS_STFT_FILE_STREAM == 1
+#if IS_INPUT_STFT == 1
 
    }   // stop looping over frames
 #endif
