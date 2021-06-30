@@ -16,7 +16,7 @@
 #include "RFFTKernels.h"
 #include "denoiserKernels.h"
 
-
+#include <math.h>
 
 
 
@@ -123,6 +123,17 @@ static void RunSTFT()
 
     PRINTF("%45s: Cycles: %10d\n","STFT: ", ti );
 
+    ta = gap_cl_readhwtimer();
+    // compute the magnitude of the STFT components
+    for (int i=0; i<AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++){
+        f16 STFT_Real_Part = STFT_Spectrogram[2*i];
+        f16 STFT_Imag_Part = STFT_Spectrogram[2*i+1];
+//        STFT_Magnitude[i] = (f16) (sqrt((float) (STFT_Real_Part*STFT_Real_Part + STFT_Imag_Part*STFT_Imag_Part) ));
+        STFT_Magnitude[i] = __builtin_pulp_f16sqrt (STFT_Real_Part*STFT_Real_Part + STFT_Imag_Part*STFT_Imag_Part);
+    }
+    ti = gap_cl_readhwtimer() - ta;
+
+    PRINTF("%45s: Cycles: %10d\n","Magnitude Compute: ", ti );
 }
 
 #include "istft_window.h"
@@ -336,6 +347,14 @@ void denoiser(void)
         printf("%f, ",STFT_Spectrogram[i]);
     }
     PRINTF("\n");
+
+    PRINTF("\nMagnitude OUT: ");
+    for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
+        printf("%f, ",STFT_Magnitude[i]);
+    }
+    PRINTF("\n");
+
+    
 
 #else ///load the STFT
 
