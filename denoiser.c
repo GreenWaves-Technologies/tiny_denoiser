@@ -213,6 +213,8 @@ switch_fs_t fs;
 
 void denoiser(void)
 {
+    PRINTF("Entering main controller\n");
+
     // Voltage-Frequency settings
     uint32_t voltage =1200;
     pi_freq_set(PI_FREQ_DOMAIN_FC, FREQ_FC*1000*1000);
@@ -243,8 +245,9 @@ void denoiser(void)
 #endif
 
 
-    PRINTF("Entering main controller\n");
-    /* Configure And open cluster. */
+    /****
+        Configure And open cluster. 
+    ****/
     struct pi_device cluster_dev;
     struct pi_cluster_conf cl_conf;
     cl_conf.id = 0;
@@ -271,7 +274,7 @@ void denoiser(void)
 
 #ifndef NN_INF_NOT
     /******
-        Setup inference task
+        Setup Denoiser NN inference task
     ******/
     printf("Setup Cluster Task for inference!\n");
     struct pi_cluster_task *task_net = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
@@ -288,7 +291,20 @@ void denoiser(void)
     
     // Reset LSTM
     ResetLSTM = 1;
-#endif
+
+    /******
+        Denoiser NN constructor
+    ******/
+    PRINTF("\n\nDenoiser Constructor\n");
+    int err_construct = __PREFIX(CNN_Construct)();
+    if (err_construct)
+    {
+        PRINTF("Graph constructor exited with error: %d\n", err_construct);
+        pmsis_exit(-5);
+    }
+    printf("Denoiser Contrcuctor OK! The L1 memory base is: %x\n",denoiser_L1_Memory);
+
+#endif // NN_INF_NOT
 
 
 #if IS_INPUT_STFT == 0 
@@ -341,7 +357,9 @@ void denoiser(void)
     pi_cluster_send_task_to_cl(&cluster_dev, task_stft);
     pmsis_l1_malloc_free(L1_Memory,_L1_Memory_SIZE);
 
-    // check spectrogram results
+    /***
+        Check the Spectrogram Results
+    ***/
     PRINTF("\nSTFT OUT: ");
     for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2; i++ ){
         printf("%f, ",STFT_Spectrogram[i]);
@@ -396,9 +414,9 @@ void denoiser(void)
             STFT_Spectrogram[i] = (f16) spectrogram_fp32[i];
             PRINTF("(%f), ",STFT_Spectrogram[i]);
         }
-#endif 
+#endif // fake data or data from file
 
-#endif
+#endif // load data STFT or AUDIO
 
 #ifndef NN_INF_NOT
         /******
@@ -406,17 +424,17 @@ void denoiser(void)
         ******/
         PRINTF("\n\n****** Denoiser ***** \n");
 
-        PRINTF("\n\nConstructor\n");
-        int err_construct = __PREFIX(CNN_Construct)();
-        if (err_construct)
-        {
-            PRINTF("Graph constructor exited with error: %d\n", err_construct);
-            pmsis_exit(-5);
-        }
-        printf("The memory base is: %x\n",denoiser_L1_Memory);
+//        PRINTF("\n\nConstructor\n");
+//        int err_construct = __PREFIX(CNN_Construct)();
+//        if (err_construct)
+//        {
+//            PRINTF("Graph constructor exited with error: %d\n", err_construct);
+//            pmsis_exit(-5);
+//        }
+//        printf("The memory base is: %x\n",denoiser_L1_Memory);
 
 
-        PRINTF("Call cluster\n");
+        PRINTF("Send task to cluster\n");
    	    pi_cluster_send_task_to_cl(&cluster_dev, task_net);
 
         PRINTF("\n Denoiser Output\n");
@@ -439,7 +457,7 @@ void denoiser(void)
         }
         #endif  /* PERF */
 
-        __PREFIX(CNN_Destruct)();
+//        __PREFIX(CNN_Destruct)();
 
         // Deassert Reset LSTM
         ResetLSTM = 0;
@@ -459,6 +477,7 @@ void denoiser(void)
     }
 
     pi_cluster_send_task_to_cl(&cluster_dev, task_stft);
+
     pmsis_l1_malloc_free(L1_Memory,_L1_Memory_SIZE);
 
     // check spectrogram results
@@ -476,6 +495,12 @@ void denoiser(void)
    }   // stop looping over frames
 #endif
 #endif
+
+
+#ifndef NN_INF_NOT
+    __PREFIX(CNN_Destruct)();
+#endif
+
     // Close the cluster
     pi_cluster_close(&cluster_dev);
     PRINTF("Ended\n");
