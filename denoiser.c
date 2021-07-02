@@ -84,10 +84,10 @@ PI_L2 DATATYPE_SIGNAL Audio_Frame[FRAME_NFFT];  // only first FRAME_SIZE samples
 PI_L2 DATATYPE_SIGNAL STFT_Spectrogram[AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2];   // FIXME: must be double in case float values are loaded from file
 PI_L2 DATATYPE_SIGNAL STFT_Magnitude[AT_INPUT_WIDTH*AT_INPUT_HEIGHT];
 
-//PI_L2 DATATYPE_SIGNAL LSTM_STATE_0_I[257];
-//PI_L2 DATATYPE_SIGNAL LSTM_STATE_0_C[257];
-//PI_L2 DATATYPE_SIGNAL LSTM_STATE_1_I[257];
-//PI_L2 DATATYPE_SIGNAL LSTM_STATE_1_C[257];
+PI_L2 DATATYPE_SIGNAL LSTM_STATE_0_I[257];
+PI_L2 DATATYPE_SIGNAL LSTM_STATE_0_C[257];
+PI_L2 DATATYPE_SIGNAL LSTM_STATE_1_I[257];
+PI_L2 DATATYPE_SIGNAL LSTM_STATE_1_C[257];
 
 #if IS_INPUT_STFT == 0 ///load the input audio signal and compute the MFCC
 
@@ -224,10 +224,10 @@ static void RunDenoiser()
 
   __PREFIX(CNN)(
         STFT_Magnitude,  
-//        LSTM_STATE_0_I,
-//        LSTM_STATE_0_C,
-//        LSTM_STATE_1_I,
-//        LSTM_STATE_1_C,
+        LSTM_STATE_0_I,
+        LSTM_STATE_0_C,
+        LSTM_STATE_1_I,
+        LSTM_STATE_1_C,
         ResetLSTM, 
         STFT_Magnitude
     );
