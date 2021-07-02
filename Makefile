@@ -54,7 +54,8 @@ NNTOOL_EXTRA_FLAGS =
 #Test Samples
 IS_FAKE_SIGNAL_IN?=0
 IS_INPUT_STFT?=0
-NN_INF_NOT?=1
+NN_INF_NOT?=0
+APPLY_DENOISER?=1
 
 # set the input files
 WAV_PATH = $(CURDIR)/samples/
@@ -190,9 +191,17 @@ ifeq ($(DEBUG), 1)
 	APP_CFLAGS += -DPRINTDEB
 endif
 
+ifeq ($(APPLY_DENOISER), 0)
+	APP_CFLAGS += -DNN_INF_NOT
+endif
+ifeq ($(APPLY_DENOISER), 1)
+	APP_CFLAGS += -DAPPLY_DENOISER
+endif
 ifeq ($(NN_INF_NOT), 1)
 	APP_CFLAGS += -DNN_INF_NOT
 endif
+
+
 
 READFS_FILES=$(abspath $(MODEL_TENSORS))
 

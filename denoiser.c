@@ -144,7 +144,36 @@ static void RuniSTFT()
     gap_cl_starttimer();
     gap_cl_resethwtimer();
 #endif
-    unsigned int ta = gap_cl_readhwtimer();
+    unsigned int ta, ti;
+
+    ta = gap_cl_readhwtimer();
+
+#ifdef APPLY_DENOISER
+    /****
+        Apply filtering on the STFT map
+    ****/
+    ta = gap_cl_readhwtimer();
+        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
+            STFT_Spectrogram[2*i]    = STFT_Spectrogram[2*i]   * STFT_Magnitude[i];
+            STFT_Spectrogram[2*i+1]  = STFT_Spectrogram[2*i+1] * STFT_Magnitude[i];
+        }
+    ti = gap_cl_readhwtimer() - ta;
+
+    PRINTF("\nSTFT Filtered: ");
+    for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2; i++ ){
+        printf("%f, ", STFT_Spectrogram[i]);
+    }
+    PRINTF("\n");
+
+    PRINTF("%45s: Cycles: %10d\n","iScaling: ", ti );
+
+#endif // apply scaling
+
+
+    /****
+        Inverse iSTFT
+    ****/
+    ta = gap_cl_readhwtimer();
    
     iSTFT(
         STFT_Spectrogram, 
@@ -155,10 +184,12 @@ static void RuniSTFT()
     );
 
     
-    unsigned int ti = gap_cl_readhwtimer() - ta;
+    ti = gap_cl_readhwtimer() - ta;
     PRINTF("%45s: Cycles: %10d\n","iSTFT: ", ti );
 
-
+    /****
+        Inverse Hanning Filtering
+    ****/
     ta = gap_cl_readhwtimer();
     // applying inverse hanning windowing
     for(int i=0;i<FRAME_SIZE;i++){
@@ -214,6 +245,12 @@ switch_fs_t fs;
 void denoiser(void)
 {
     PRINTF("Entering main controller\n");
+#ifdef NN_INF_NOT
+    PRINTF("NN_INF_NOT is defined\n");
+#endif
+#ifdef APPLY_DENOISER
+    PRINTF("APPLY_DENOISER is defined\n");
+#endif
 
     // Voltage-Frequency settings
     uint32_t voltage =1200;
@@ -418,6 +455,7 @@ void denoiser(void)
 
 #endif // load data STFT or AUDIO
 
+
 #ifndef NN_INF_NOT
         /******
             NN Denoiser Task
@@ -462,6 +500,7 @@ void denoiser(void)
         // Deassert Reset LSTM
         ResetLSTM = 0;
 #endif  // disable nn inference
+
 
     /******
         ISTF Task
