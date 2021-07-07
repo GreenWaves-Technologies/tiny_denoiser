@@ -15,8 +15,7 @@ qshow
 
 
 
-
-set l3_ram_ext_managed false
+set l3_ram_ext_managed true
 
 set graph_reorder_constant_in true
 set graph_produce_node_names true
