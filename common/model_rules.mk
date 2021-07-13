@@ -48,14 +48,14 @@ $(MODEL_PATH): $(TRAINED_MODEL) | $(MODEL_BUILD)
 #	Quantize the graph if not already done with tflite quantization
 #	Save the graph state files
 
-$(MODEL_STATE): $(MODEL_PATH) $(NNTOOL_SCRIPT) | $(MODEL_BUILD)
+$(MODEL_STATE): $(MODEL_PATH) $(IMAGES) $(NNTOOL_SCRIPT) | $(MODEL_BUILD)
 	echo "GENERATING NNTOOL STATE FILE"
 	$(NNTOOL) -s $(NNTOOL_SCRIPT) $< $(NNTOOL_EXTRA_FLAGS)
 
 nntool_state: $(MODEL_STATE)
 
 # Runs NNTOOL with its state file to generate the autotiler model code
-$(MODEL_BUILD)/$(MODEL_SRC): $(MODEL_STATE) $(MODEL_PATH) | $(MODEL_BUILD)
+$(MODEL_BUILD)/$(MODEL_SRC) $(MODEL_EXPRESSIONS): $(MODEL_STATE) $(MODEL_PATH) | $(MODEL_BUILD)
 	echo "GENERATING AUTOTILER MODEL"
 	$(NNTOOL) -g -M $(MODEL_BUILD) -m $(MODEL_SRC) -T $(TENSORS_DIR) -H $(MODEL_HEADER) $(MODEL_GENFLAGS_EXTRA) $<
 

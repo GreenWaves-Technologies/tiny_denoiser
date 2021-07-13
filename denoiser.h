@@ -14,4 +14,10 @@
 #define __PREFIX(x) denoiser ## x
 extern AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash);
 
+#ifdef SILENT
+# define PRINTF(...) ((void) 0)
+#else
+# define PRINTF printf
+#endif  /* DEBUG */
+
 #endif
