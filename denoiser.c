@@ -49,8 +49,13 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 #endif
 
 
-
-#define DATATYPE_SIGNAL f16
+#if DTYPE == 0
+    #define DATATYPE_SIGNAL float16
+#elif DTYPE == 1
+    #define DATATYPE_SIGNAL float16
+#else
+    #define DATATYPE_SIGNAL short
+#endif
 
 #if IS_INPUT_STFT == 0 
     //load the input audio signal and compute the MFCC
@@ -190,9 +195,9 @@ static void RuniSTFT()
     iSTFT(
         STFT_Spectrogram, 
         STFT_Spectrogram, 
-        R2_Twiddles_f16_256,   
+        R4_Twiddles_f16_256,   
         RFFT_Twiddles_f16_512,   
-        R2_SwapTable_fix_256
+        R4_SwapTable_fix_256
     );
 
     ti = gap_cl_readhwtimer() - ta;
@@ -233,6 +238,17 @@ static void RunDenoiser()
   pi_gpio_pin_write(&gpio, GPIO_OUT, 1 );
 #endif
 
+// debug
+#if DTYPE == 1
+  printf("Going to cast the input from f16 to bf16: \n");
+  float16alt * temp_bfp16 = (float16alt * ) STFT_Magnitude;
+  for(int i = 0 ; i<257; i++){
+    temp_bfp16[i] = (float16alt) STFT_Magnitude[i];
+    printf("%f, ", temp_bfp16[i]);
+  }
+  printf("\n");
+#endif
+
   __PREFIX(CNN)(
         STFT_Magnitude,  
         LSTM_STATE_0_I,
@@ -243,6 +259,13 @@ static void RunDenoiser()
         ResetLSTM, 
         STFT_Magnitude
     );
+
+#if DTYPE == 1
+  printf("Going to cast the input from bf16 to f16\n");
+  for(int i = 0 ; i<257; i++){
+    STFT_Magnitude[i] = (float16) temp_bfp16[i];
+  }
+#endif
 
 #ifdef GAPUINO
   pi_gpio_pin_write(&gpio, GPIO_OUT, 0);
@@ -387,8 +410,8 @@ void denoiser(void)
 
     PRINTF("Reading wav...\n");
     header_struct header_info;
-//    if (ReadWavFromFile("../../../samples/sample_0000.wav", 
-    if (ReadWavFromFile("../../../test_accuracy/test_out.wav", 
+    if (ReadWavFromFile("../../../samples/sample_0000.wav", 
+//    if (ReadWavFromFile("../../../test_accuracy/test_out.wav", 
             denoiser_L2_Memory, AUDIO_BUFFER_SIZE*sizeof(short), &header_info)){
         PRINTF("\nError reading wav file\n");
         pmsis_exit(1);
