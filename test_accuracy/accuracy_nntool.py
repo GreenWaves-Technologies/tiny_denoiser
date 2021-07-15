@@ -98,7 +98,8 @@ G = NNToolShell.get_graph_from_commands([
         'nodeoption LSTM_144 RNN_STATES_AS_INPUTS 1',
         'nodeoption LSTM_144 LSTM_OUTPUT_C_STATE 1',
         'fquant',
-        'qtune * float float16'
+        'qtune * float float16', 
+        'qshow'
     ])
 executer = GraphExecuter(G, qrecs=G.quantization)
 
@@ -131,7 +132,7 @@ for i, data in enumerate(data_loader):
             if RUN_ON_GAP:
                 single_mags = single_mags.numpy()
                 data = [single_mags, lstm_0_i_state, lstm_0_c_state, lstm_1_i_state, lstm_1_c_state]
-                outputs = executer.execute(data, qmode=QuantizationMode.all_float_quantize_dequantize(), silent=True)
+                outputs = executer.execute(data, qmode=QuantizationMode.all(), silent=True)
                 out = torch.Tensor(outputs[47][0]).unsqueeze(0)
                 lstm_0_i_state = outputs[36][0].squeeze()
                 lstm_0_c_state = outputs[39][0].squeeze()
