@@ -178,7 +178,7 @@ static void RuniSTFT()
 
     PRINTF("\nSTFT Filtered: ");
     for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2; i++ ){
-        printf("%f, ", STFT_Spectrogram[i]);
+        PRINTF("%f, ", STFT_Spectrogram[i]);
     }
     PRINTF("\n");
 
@@ -382,8 +382,10 @@ void denoiser(void)
 #if IS_INPUT_STFT == 0 
 #if IS_FAKE_SIGNAL_IN == 0
 
+#ifndef SILENT
     printf("Before the malloc\n");    
     pi_l2_malloc_dump();
+#endif
 
     // allocate L2 Memory
     denoiser_L2_Memory = pi_l2_malloc(_denoiser_L2_Memory_SIZE);
@@ -392,8 +394,11 @@ void denoiser(void)
         pmsis_exit(18);        
     }
 
+#ifndef SILENT
     printf("After the malloc %x\n", denoiser_L2_Memory);    
     pi_l2_malloc_dump();
+#endif
+
     /***
         Allocate L3 buffers for audio IN/OUT
     ***/
@@ -410,8 +415,8 @@ void denoiser(void)
 
     PRINTF("Reading wav...\n");
     header_struct header_info;
-    if (ReadWavFromFile("../../../samples/sample_0000.wav", 
-//    if (ReadWavFromFile("../../../test_accuracy/test_out.wav", 
+//    if (ReadWavFromFile("../../../samples/sample_0000.wav", 
+    if (ReadWavFromFile("../../../test_accuracy/test_out.wav", 
             denoiser_L2_Memory, AUDIO_BUFFER_SIZE*sizeof(short), &header_info)){
         PRINTF("\nError reading wav file\n");
         pmsis_exit(1);
@@ -419,7 +424,7 @@ void denoiser(void)
     int num_samples = header_info.DataSize * 8 / (header_info.NumChannels * header_info.BitsPerSample);
     PRINTF("Num Samples: %d\n", num_samples);
     PRINTF("BitsPerSample: %d\n", header_info.BitsPerSample);
-    PRINTF("Finished Read wav.\n");
+    printf("Finished Read wav.\n");
 
     // copy input data to L3
     pi_ram_write(&HyperRam, inSig,   denoiser_L2_Memory, num_samples * sizeof(short));
@@ -432,13 +437,19 @@ void denoiser(void)
     }
     pi_ram_write(&HyperRam, outSig,   denoiser_L2_Memory, num_samples * sizeof(short));
 
+#ifndef SILENT
     printf("Before the free\n");    
     pi_l2_malloc_dump();
+#endif
 
     pi_l2_free(denoiser_L2_Memory,_denoiser_L2_Memory_SIZE);
-    printf("After the free\n");    
 
+#ifndef SILENT
+    printf("After the free\n");    
     pi_l2_malloc_dump();
+#endif
+
+
 #endif
 #endif
 
@@ -472,12 +483,12 @@ void denoiser(void)
 
     int tot_frames = (int) (((float)num_samples / FRAME_STEP) - NUM_FRAME_OVERLAP) ;
 //    tot_frames = 10; // debug purpose then remove
-    PRINTF("Number of frames: %d\n", tot_frames);
+    printf("Number of frames to be processed: %d\n", tot_frames);
 
 
     for (int frame_id = 0; frame_id < tot_frames; frame_id++)
     {   
-        PRINTF("***** Frame %d ***** \n", frame_id);
+        printf("***** Processing Frame %d of %d ***** \n", frame_id, tot_frames);
         // Copy Data from L3 to L2
         short * in_temp_buffer = (short *) Audio_Frame;
         pi_ram_read(
@@ -518,13 +529,13 @@ void denoiser(void)
         ***/
         PRINTF("\nSTFT OUT: ");
         for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2; i++ ){
-            printf("%f, ",STFT_Spectrogram[i]);
+            PRINTF("%f, ",STFT_Spectrogram[i]);
         }
         PRINTF("\n");
 
         PRINTF("\nMagnitude OUT: ");
         for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-            printf("%f, ",STFT_Magnitude[i]);
+            PRINTF("%f, ",STFT_Magnitude[i]);
         }
         PRINTF("\n");
 
@@ -665,16 +676,19 @@ void denoiser(void)
 //#endif
 #endif
 
+#ifndef SILENT
     printf("\nBefore Destruct: \n");
     pi_l2_malloc_dump();
+#endif
 
 #ifndef NN_INF_NOT
     __PREFIX(CNN_Destruct)();
 #endif
 
+#ifndef SILENT
     printf("\nAfter Destruct: \n");
     pi_l2_malloc_dump();
-
+#endif
 
     // allocate L2 Memory
     denoiser_L2_Memory = pi_l2_malloc(_denoiser_L2_Memory_SIZE);
@@ -683,8 +697,10 @@ void denoiser(void)
         pmsis_exit(18);        
     }
 
+#ifndef SILENT
     printf("\nAfter Allocatation: \n");
     pi_l2_malloc_dump();
+#endif
 
     // copy input data to L3
     pi_ram_read(&HyperRam, outSig,   denoiser_L2_Memory, num_samples * sizeof(short));
@@ -698,12 +714,9 @@ void denoiser(void)
     }
     PRINTF("\n");
 
-    if (WriteWavToFile("test_gap.wav", 16, 16000, 1, (uint32_t *) denoiser_L2_Memory, num_samples* sizeof(short)))
-        printf("Error in writing wav file\n");
-    else
-        printf("Writing wav file completed successfully\n");
+    WriteWavToFile("test_gap.wav", 16, 16000, 1, (uint32_t *) denoiser_L2_Memory, num_samples* sizeof(short));
+    printf("Writing wav file to test_gap.wav completed successfully\n");
 
- //   WriteWavToFileNew("test_gap.wav", 2, 16000, 1, (uint32_t *) outSig, num_samples* sizeof(short), 1, &HyperRam);
 
 
     pi_l2_free(denoiser_L2_Memory,_denoiser_L2_Memory_SIZE);

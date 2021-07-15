@@ -13,7 +13,7 @@ endif
 
 # Quantization Mode
 # FP16=float16, BFP16 = float16alt
-QUANT_BITS?=BFP16
+QUANT_BITS?=FP16
 
 SILENT?=0
 DEBUG?=0
