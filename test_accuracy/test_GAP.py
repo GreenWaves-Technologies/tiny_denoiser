@@ -108,13 +108,14 @@ def test_on_gap(dataset_path, output_file, samplerate, padding, suffix_cleanfile
             estimate = estimate[:sz0]
    
         pesq_i, stoi_i =  _run_metrics(clean_data, estimate, samplerate)
+        print("Sample ", i, "with pesq= ", pesq_i, " and stoi=", stoi_i )
         total_cnt += clean_data.shape[0]
         total_pesq += pesq_i
         total_stoi += stoi_i
 
     pesq = total_pesq / total_cnt
     stoi = total_stoi / total_cnt
-    print(f'Test set performance:PESQ={pesq}, STOI={stoi}.')
+    print("Test set performance:PESQ=", pesq, " STOI=", stoi)
 
 
 def get_pesq(ref_sig, out_sig, sr):
