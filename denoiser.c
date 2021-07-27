@@ -416,7 +416,8 @@ void denoiser(void)
     PRINTF("Reading wav...\n");
     header_struct header_info;
 //    if (ReadWavFromFile("../../../samples/sample_0000.wav", 
-    if (ReadWavFromFile("../../../test_accuracy/test_out.wav", 
+//    if (ReadWavFromFile("../../../test_accuracy/test_out.wav", 
+    if (ReadWavFromFile("../../../samples/test_py.wav", 
             denoiser_L2_Memory, AUDIO_BUFFER_SIZE*sizeof(short), &header_info)){
         PRINTF("\nError reading wav file\n");
         pmsis_exit(1);
@@ -488,7 +489,7 @@ void denoiser(void)
 
     for (int frame_id = 0; frame_id < tot_frames; frame_id++)
     {   
-        printf("***** Processing Frame %d of %d ***** \n", frame_id, tot_frames);
+        printf("***** Processing Frame %d of %d ***** \n", frame_id+1, tot_frames);
         // Copy Data from L3 to L2
         short * in_temp_buffer = (short *) Audio_Frame;
         pi_ram_read(

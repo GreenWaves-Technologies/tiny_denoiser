@@ -1,113 +1,185 @@
-import logging
 import os
-import torch
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
-import torch.nn.functional as F
 import argparse
 import soundfile as sf
 import librosa    
 
-
-# import denoiser
-DENOISER_PATH = '/home/manuele/Work/denoiser'
-sys.path.insert(0,DENOISER_PATH)
-from denoiser.demucs_tf import DemucsTF
-from denoiser import distrib, pretrained
-from denoiser.data import NoisyCleanSet
-from denoiser import distrib
-from denoiser.evaluate import _run_metrics
-from denoiser.tinylstm import TinyLSTMStreamer
+from pesq import pesq
+from pystoi import stoi
 
 
-parser = argparse.ArgumentParser(
-        'denoiser.enhance',
-        description="Speech enhancement using Demucs - Generate enhanced files")
-pretrained.add_model_flags(parser)
-parser.add_argument('--device', default="cpu")
-parser.add_argument('--dry', type=float, default=0,
-                    help='dry/wet knob coefficient. 0 is only input signal, 1 only denoised.')
-parser.add_argument('--sample_rate', default=16_000, type=int, help='sample rate')
-parser.add_argument('--num_workers', type=int, default=10)
-parser.add_argument('--streaming', action="store_true",
-                        help="true streaming evaluation for Demucs")
-parser.add_argument("--out_dir", type=str, default="enhanced",
-                    help="directory putting enhanced wav files")
-parser.add_argument("--batch_size", default=1, type=int, help="batch size")
-group = parser.add_mutually_exclusive_group()
-group.add_argument("--noisy_dir", type=str, default=None,
-                   help="directory including noisy wav files")
-group.add_argument("--noisy_json", type=str, default=None,
-                   help="json file including noisy wav files")
 
-# becnhmark vars
-group.add_argument("--model_path_torch", type=str, 
-                default=DENOISER_PATH + '/outputs/exp_bandmask=0.2,batch_size=64,dset=valentini,model=tinylstm,remix=1,segment=4.5,shift=8000,shift_same=True,stft_loss=True,stride=0.5,tinylstm.encoder=True/best.th',
-                help="directory including noisy wav files")
-group.add_argument('--use_dns', action="store_true",
-                        help="Use the valentini dataset")
-group.add_argument("--dataset_path", type=str, 
-                default='/home/manuele/Work/denoiser/egs/',
-                help="dataset path")
-group.add_argument("--onnx_file", type=str, 
-                default='/home/manuele/Work/denoiser/test.onnx',
-                help="dataset path")
-
-args = parser.parse_args([])
-
-
-# load dataset
-if args.use_dns:
-    # DNS Dataset
-    argsdata_dir=args.dataset_path + 'dns/tt'
-    argsmatching='dns'
-    argssample_rate=16000   
-else:
-    # VALENTINI Dataset
-    argsdata_dir=args.dataset_path + 'valentini/tt'
-    argsmatching='sort'
-    argssample_rate=16000
- 
-    
-dataset = NoisyCleanSet(argsdata_dir, matching=argsmatching, sample_rate=argssample_rate)
-data_loader = distrib.loader(dataset, batch_size=1, num_workers=2)
-
-
-RUN_ON_GAP = True
-total_pesq = 0
-total_stoi = 0
-total_cnt = 0
-updates = 5
-
-args.pesq = True
-for i, data in enumerate(data_loader):
-    # Get batch data
-    noisy, clean = [x.to(args.device) for x in data]
-
-
-    print(noisy.size())
-    noisy = F.pad(noisy, (300,300) ,"constant", 0 )
-    print(noisy.size())
-    sf.write('samples/input_file.wav', noisy.squeeze(), argssample_rate)
-    os.system("make run platform=gvsoc SILENT=1")
-    estimate, s = librosa.load('samples/test_gap.wav', sr=argssample_rate)
-    estimate = torch.from_numpy(estimate)[300:].unsqueeze(0).unsqueeze(0)
-    print('estimate size: ', estimate.size())
-    
-    sz0 = clean.size(2)
-    sz1 = estimate.size(2)
-    print(sz0, sz1)
-    if sz0 > sz1:
-        estimate = F.pad(estimate, (0,sz0-sz1),"constant", 0 )
+def run_on_gap_gvsoc(input_file, output_file, compile=True):
+    if compile:
+        os.system("make clean all run platform=gvsoc SILENT=1")
     else:
-        estimate = estimate[...,:sz0]
+        os.system("make run platform=gvsoc SILENT=1")
+    return True
+
+def denoise_sample(input_file, output_file, samplerate, padding):
+
+    if os.path.isfile(output_file):
+        os.remove(output_file)
+
+    data, s = librosa.load(input_file, sr=samplerate)
+    if padding:
+        data = np.pad(data, (padding, padding))
+    sf.write('samples/test_py.wav', data, samplerate)
     
-    pesq_i, stoi_i =  _run_metrics(clean, estimate, args)
-    total_cnt += clean.shape[0]
-    total_pesq += pesq_i
-    total_stoi += stoi_i
+    run_on_gap_gvsoc('samples/test_py.wav', output_file)
+
+    if not os.path.isfile(output_file):
+        print("Error! not any output fiule produced")
+        exit(0)
+    print("Clean audio file stored in: ", output_file)
+    return 0
+
+def test_on_gap(dataset_path, output_file, samplerate, padding, suffix_cleanfile):
     
-metrics = [total_pesq, total_stoi]
-pesq, stoi = distrib.average([m/total_cnt for m in metrics], total_cnt)
-print(f'Test set performance:PESQ={pesq}, STOI={stoi}.')
+    # set noisy and clean path
+    noisy_path = dataset_path + '/noisy/'
+    clean_path = dataset_path + '/clean/'
+
+    # parse the dataset
+    filenames = [os.path.splitext(item)[0] for item in os.listdir(noisy_path)]
+    if len(filenames) == 0:
+        print("Dataset is empty!")
+        exit(1)
+
+    # create a folder with the estimate
+    estimate_path = dataset_path + '/estimate/'
+    if suffix_cleanfile != '':
+        if not os.path.exists(estimate_path):
+            os.makedirs(estimate_path)
+
+    # stas
+    total_pesq = 0
+    total_stoi = 0
+    total_cnt = 0
+
+    # utils
+    compile_GAP = True
+
+    for i, file in enumerate(filenames):
+
+        # check first if the clean signal has been already produced
+        estimate_filepath = estimate_path + file + suffix_cleanfile + '.wav'
+        if os.path.isfile(estimate_filepath):
+            estimate, s = librosa.load(estimate_filepath, sr=samplerate)
+        else: # compute the estimate
+        
+            # Get data
+            if os.path.isfile(output_file):
+                os.remove(output_file)
+
+            input_file = noisy_path + file + '.wav'
+            data, s = librosa.load(input_file, sr=samplerate)
+            if padding:
+                data = np.pad(data, (padding, padding))
+            sf.write('samples/test_py.wav', data, samplerate)
+    
+            run_on_gap_gvsoc('samples/test_py.wav', output_file, compile=compile_GAP)
+            compile_GAP = False
+
+            if not os.path.isfile(output_file):
+                print("Error! not any output file produced")
+                exit(0)
+
+            estimate, s = librosa.load(output_file, sr=samplerate)
+            estimate = estimate[300:]
+
+            if suffix_cleanfile != '':
+                sf.write(estimate_filepath, estimate, samplerate)
+
+        # get the clean file
+        input_file = clean_path + file + '.wav'
+        clean_data, s = librosa.load(input_file, sr=samplerate)
+
+        # compute the metrics
+        print(clean_data.shape, estimate.shape)
+        sz0 = clean_data.shape[0]
+        sz1 = estimate.shape[0]
+        print(sz0, sz1)
+        if sz0 > sz1:
+            estimate = np.pad(estimate, (0,sz0-sz1))
+        else:
+            estimate = estimate[:sz0]
+   
+        pesq_i, stoi_i =  _run_metrics(clean_data, estimate, samplerate)
+        total_cnt += clean_data.shape[0]
+        total_pesq += pesq_i
+        total_stoi += stoi_i
+
+    pesq = total_pesq / total_cnt
+    stoi = total_stoi / total_cnt
+    print(f'Test set performance:PESQ={pesq}, STOI={stoi}.')
+
+
+def get_pesq(ref_sig, out_sig, sr):
+    """Calculate PESQ.
+    Args:
+        ref_sig: numpy.ndarray, [B, T]
+        out_sig: numpy.ndarray, [B, T]
+    Returns:
+        PESQ
+    """
+    pesq_val = 0
+    for i in range(len(ref_sig)):
+        pesq_val += pesq(sr, ref_sig[i], out_sig[i], 'wb')
+    return pesq_val
+
+
+def get_stoi(ref_sig, out_sig, sr):
+    """Calculate STOI.
+    Args:
+        ref_sig: numpy.ndarray, [B, T]
+        out_sig: numpy.ndarray, [B, T]
+    Returns:
+        STOI
+    """
+    stoi_val = 0
+    for i in range(len(ref_sig)):
+        stoi_val += stoi(ref_sig[i], out_sig[i], sr, extended=False)
+    return stoi_val
+
+def _run_metrics(clean, estimate, samplerate):
+    pesq_i = pesq(samplerate, clean, estimate, 'wb')
+    stoi_i = stoi(clean, estimate, samplerate, extended=False)
+    return pesq_i, stoi_i
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        'GAP denoiser',
+        description="Speech enhancement using TinyLSTM on GAP")
+    parser.add_argument('--sample_rate', default=16_000, type=int, help='sample rate')
+    parser.add_argument("--mode", type=str, default="test",
+                        help="Choose between sample | test")
+    parser.add_argument("--wav_input", type=str, default="samples/p232_001.wav",
+                        help="Path and filename of the input wav")
+    parser.add_argument("--dataset_path", type=str, default="samples/dataset/",
+                        help="Path of the dataset w/ subdirectories noisy and clean")
+    parser.add_argument('--pad_input', type=int, default=0,
+                        help="Pad the input left/right: computed as FRAME_SIZE - FRAME_HOP")
+    parser.add_argument("--wav_output", type=str, default="/home/manuele/GWT_apps/denoiser_tiny/BUILD/GAP9_V2/GCC_RISCV/test_gap.wav",
+                        help="Path and filename of the output wav")
+    parser.add_argument("--suffix_clean", type=str, default='_f16',
+                        help="Suffix of the clean smaples in test mode. If empy no clean sample is stored")
+
+    parser.add_argument('--dry', type=float, default=0,
+                        help='dry/wet knob coefficient. 0 is only input signal, 1 only denoised.')
+    parser.add_argument('--streaming', action="store_true",
+                            help="true streaming evaluation for Demucs")
+
+    parser.add_argument("--batch_size", default=1, type=int, help="batch size")
+    args = parser.parse_args()
+    print(args)
+    if args.mode == 'sample':
+        print(args.pad_input)
+        denoise_sample(args.wav_input, args.wav_output, args.sample_rate, args.pad_input)
+    elif args.mode == 'test':
+        test_on_gap(args.dataset_path, args.wav_output, args.sample_rate, args.pad_input, args.suffix_clean)
+    else:
+        print("Selected --mode is not supported!")
+        exit(1)
