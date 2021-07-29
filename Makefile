@@ -14,6 +14,7 @@ endif
 # Quantization Mode
 # FP16=float16, BFP16 = float16alt
 QUANT_BITS?=FP16
+GRU?=0
 
 SILENT?=0
 DEBUG?=0
@@ -31,8 +32,12 @@ else ifeq 	'$(QUANT_BITS)' 'NE16'
 	MODEL_SQ8=1
 
 else ifeq 	'$(QUANT_BITS)' 'FP16'
-	NNTOOL_SCRIPT=model/nntool_script_fp16
 	MODEL_FP16=1
+	ifeq ($(GRU), 0)
+		NNTOOL_SCRIPT=model/nntool_script_fp16
+	else
+		NNTOOL_SCRIPT=model/nntool_script_fp16_gru
+	endif
 
 else ifeq 	'$(QUANT_BITS)' 'BFP16'
 	NNTOOL_SCRIPT=model/nntool_script_bfp16
@@ -46,13 +51,19 @@ endif
 ## Model Definition Parameters ##
 BUILD_DIR?=BUILD
 
-MODEL_PREFIX = denoiser
 MODEL_SUFFIX = _$(QUANT_BITS)BIT
 
 MODEL_BUILD=BUILD_MODEL$(MODEL_SUFFIX)
 
 TRAINED_MODEL_PATH=model
-TRAINED_MODEL = $(TRAINED_MODEL_PATH)/denoiser.onnx
+ifeq ($(GRU), 0)
+	MODEL_PREFIX = denoiser
+else
+	MODEL_PREFIX = denoiser_GRU
+endif
+
+TRAINED_MODEL = $(TRAINED_MODEL_PATH)/$(MODEL_PREFIX).onnx
+
 MODEL_PATH = $(MODEL_BUILD)/$(MODEL_PREFIX).onnx
 TENSORS_DIR = $(MODEL_BUILD)/tensors
 MODEL_TENSORS = $(MODEL_BUILD)/$(MODEL_PREFIX)_L3_Flash_Const.dat
@@ -239,6 +250,9 @@ ifeq ($(NN_INF_NOT), 1)
 	APP_CFLAGS += -DNN_INF_NOT
 endif
 
+ifeq ($(GRU), 1)
+	APP_CFLAGS += -DGRU
+endif
 
 
 READFS_FILES=$(abspath $(MODEL_TENSORS))
