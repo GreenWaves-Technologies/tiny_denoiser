@@ -1,7 +1,7 @@
 #include "AutoTilerLib.h"
 #include "AutoTilerLibTypes.h"
 #include "DSP_Generators.h"
-#include "STFT_params.h"
+#include "STFT_params.h"  // user file
 
 
 void FFTConfiguration(unsigned int L1Memory)
@@ -9,7 +9,7 @@ void FFTConfiguration(unsigned int L1Memory)
   SetInlineMode(ALWAYS_INLINE);
 	SetSymbolDynamics();
 
-  SetUsedFilesNames(0, 3, "MfccBasicKernels.h", "CmplxFunctions.h", "PreProcessing.h");
+  SetUsedFilesNames(0, 1, "DSP_Lib.h");
   SetGeneratedFilesNames("RFFTKernels.c", "RFFTKernels.h");
 
   SetL1MemorySize(L1Memory);
@@ -59,7 +59,6 @@ int main(int argc, char **argv)
       0,          // MagSquared
       FLOAT16     // datatype
     );
-
 
     IRFFT_2D_Generator(
       "iSTFT",     // name 
