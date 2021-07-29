@@ -9,12 +9,17 @@
 
 /* Autotiler includes. */
 #include "Gap.h"
-#include "denoiser.h"
+
+#ifdef GRU
+    #include "denoiser_GRU.h"
+#else
+    #include "denoiser.h"
+#endif
+
 #include "wavIO.h"
 #include "fs_switch.h"
 
 #include "RFFTKernels.h"
-#include "denoiserKernels.h"
 
 # include "bsp/ram.h"
 # include "bsp/ram/hyperram.h"
@@ -252,18 +257,23 @@ static void RunDenoiser()
   __PREFIX(CNN)(
         STFT_Magnitude,  
         LSTM_STATE_0_I,
+#ifndef GRU
         LSTM_STATE_0_C,
+#endif
         LSTM_STATE_1_I,
+#ifndef GRU
         LSTM_STATE_1_C,
+#endif
         ResetLSTM, 
         ResetLSTM, 
         STFT_Magnitude
     );
 
 #if DTYPE == 1
-  printf("Going to cast the input from bf16 to f16\n");
+  printf("Going to cast the output from bf16 to f16\n");
   for(int i = 0 ; i<257; i++){
     STFT_Magnitude[i] = (float16) temp_bfp16[i];
+    printf("%f, ", STFT_Magnitude[i]);
   }
 #endif
 
@@ -464,7 +474,7 @@ void denoiser(void)
         PRINTF("Graph constructor exited with error: %d\n", err_construct);
         pmsis_exit(-5);
     }
-    PRINTF("Denoiser Contrcuctor OK! The L1 memory base is: %x\n",denoiser_L1_Memory);
+    PRINTF("Denoiser Contrcuctor OK! The L1 memory base is: %x\n",__PREFIX(_L1_Memory));
 
 #endif // NN_INF_NOT
 
@@ -579,8 +589,9 @@ void denoiser(void)
         float * spectrogram_fp32 = (float *)STFT_Spectrogram;
         for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
             PRINTF("%f ",spectrogram_fp32[i]);
-            STFT_Spectrogram[i] = (f16) spectrogram_fp32[i];
+            STFT_Spectrogram[i] = (f16) spectrogram_fp32[i];    // FIXME: this may be removed
             PRINTF("(%f), ",STFT_Spectrogram[i]);
+            STFT_Magnitude[i] = (f16) spectrogram_fp32[i];
         }
 #endif // fake data or data from file
 
@@ -633,6 +644,7 @@ void denoiser(void)
 #endif  // disable nn inference
 
 
+#if IS_INPUT_STFT == 0
     /******
         ISTF Task
     ******/
@@ -657,10 +669,11 @@ void denoiser(void)
         PRINTF("%f, ", Audio_Frame[i] );
     }
     PRINTF("\n");
+#endif
 
 
 #if IS_FAKE_SIGNAL_IN == 0
-//#if IS_INPUT_STFT == 1
+#if IS_INPUT_STFT == 0
         PRINTF("Writing Frame %d/%d to the output buffer\n\n", frame_id+1, tot_frames);
 
         // Cast if needed
@@ -672,9 +685,9 @@ void denoiser(void)
     //        Audio_Frame[i] = ((DATATYPE_SIGNAL) inSig[frame_id*FRAME_STEP+i] )/(1<<15);
         }
         pi_ram_write(&HyperRam,  (short *) outSig + (frame_id*FRAME_STEP),   Audio_Frame_temp, FRAME_SIZE * sizeof(short));
+#endif
 
    }   // stop looping over frames
-//#endif
 #endif
 
 #ifndef SILENT
@@ -690,6 +703,10 @@ void denoiser(void)
     printf("\nAfter Destruct: \n");
     pi_l2_malloc_dump();
 #endif
+
+
+
+#if IS_INPUT_STFT == 0
 
     // allocate L2 Memory
     denoiser_L2_Memory = pi_l2_malloc(_denoiser_L2_Memory_SIZE);
@@ -718,10 +735,8 @@ void denoiser(void)
     WriteWavToFile("test_gap.wav", 16, 16000, 1, (uint32_t *) denoiser_L2_Memory, num_samples* sizeof(short));
     printf("Writing wav file to test_gap.wav completed successfully\n");
 
-
-
     pi_l2_free(denoiser_L2_Memory,_denoiser_L2_Memory_SIZE);
-
+#endif
 
 
     // Close the cluster

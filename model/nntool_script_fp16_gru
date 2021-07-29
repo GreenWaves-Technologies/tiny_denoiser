@@ -1,0 +1,27 @@
+set debug true
+adjust
+fusions --scale8
+
+nodeoption GRU_74 RNN_STATES_AS_INPUTS 1
+nodeoption GRU_136 RNN_STATES_AS_INPUTS 1
+
+
+fquant
+qtune * float float16
+
+qshow
+
+
+
+set l3_ram_ext_managed true
+
+set graph_reorder_constant_in true
+set graph_produce_node_names true
+set graph_produce_operinfos true
+set graph_monitor_cycles true
+set graph_const_exec_from_flash false
+
+#set graph_dump_tensor 0
+#set graph_trace_exec true
+
+save_state

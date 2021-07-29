@@ -12,6 +12,8 @@
 #endif
 
 #define __PREFIX(x) denoiser ## x
+#include "denoiserKernels.h"
+
 extern AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash);
 
 #ifdef SILENT
