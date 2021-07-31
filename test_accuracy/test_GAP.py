@@ -11,11 +11,11 @@ from pystoi import stoi
 
 
 
-def run_on_gap_gvsoc(input_file, output_file, compile=True):
+def run_on_gap_gvsoc(input_file, output_file, compile=True, gru=False):
     if compile:
-        os.system("make clean all run platform=gvsoc SILENT=1")
+        os.system("make clean all run platform=gvsoc SILENT=1"+" GRU=1" if gru else "")
     else:
-        os.system("make run platform=gvsoc SILENT=1")
+        os.system("make run platform=gvsoc SILENT=1"+" GRU=1" if gru else "")
     return True
 
 def denoise_sample(input_file, output_file, samplerate, padding):
@@ -36,7 +36,7 @@ def denoise_sample(input_file, output_file, samplerate, padding):
     print("Clean audio file stored in: ", output_file)
     return 0
 
-def test_on_gap(dataset_path, output_file, samplerate, padding, suffix_cleanfile):
+def test_on_gap(dataset_path, output_file, samplerate, padding, suffix_cleanfile, gru):
     
     # set noisy and clean path
     noisy_path = dataset_path + '/noisy/'
@@ -80,7 +80,7 @@ def test_on_gap(dataset_path, output_file, samplerate, padding, suffix_cleanfile
                 data = np.pad(data, (padding, padding))
             sf.write('samples/test_py.wav', data, samplerate)
     
-            run_on_gap_gvsoc('samples/test_py.wav', output_file, compile=compile_GAP)
+            run_on_gap_gvsoc('samples/test_py.wav', output_file, compile=compile_GAP, gru=gru)
             compile_GAP = False
 
             if not os.path.isfile(output_file):
@@ -98,24 +98,22 @@ def test_on_gap(dataset_path, output_file, samplerate, padding, suffix_cleanfile
         clean_data, s = librosa.load(input_file, sr=samplerate)
 
         # compute the metrics
-        print(clean_data.shape, estimate.shape)
         sz0 = clean_data.shape[0]
         sz1 = estimate.shape[0]
-        print(sz0, sz1)
         if sz0 > sz1:
             estimate = np.pad(estimate, (0,sz0-sz1))
         else:
             estimate = estimate[:sz0]
    
         pesq_i, stoi_i =  _run_metrics(clean_data, estimate, samplerate)
-        print("Sample ", i, "with pesq= ", pesq_i, " and stoi=", stoi_i )
-        total_cnt += clean_data.shape[0]
+        print("Sample ", i,'\t', file,"\twith pesq=\t", pesq_i, "\tand stoi=\t", stoi_i )
+        total_cnt += 1
         total_pesq += pesq_i
         total_stoi += stoi_i
 
     pesq = total_pesq / total_cnt
     stoi = total_stoi / total_cnt
-    print("Test set performance:PESQ=", pesq, " STOI=", stoi)
+    print("Test set performance:PESQ=\t", pesq, "\t STOI=\t", stoi)
 
 
 def get_pesq(ref_sig, out_sig, sr):
@@ -165,22 +163,22 @@ if __name__ == "__main__":
                         help="Pad the input left/right: computed as FRAME_SIZE - FRAME_HOP")
     parser.add_argument("--wav_output", type=str, default="/home/manuele/GWT_apps/denoiser_tiny/BUILD/GAP9_V2/GCC_RISCV/test_gap.wav",
                         help="Path and filename of the output wav")
-    parser.add_argument("--suffix_clean", type=str, default='_f16',
+    parser.add_argument("--suffix_clean", type=str, default='',
                         help="Suffix of the clean smaples in test mode. If empy no clean sample is stored")
+    parser.add_argument('--gru', action="store_true",
+                            help="Set GRU in case of a GRU model")
 
     parser.add_argument('--dry', type=float, default=0,
                         help='dry/wet knob coefficient. 0 is only input signal, 1 only denoised.')
-    parser.add_argument('--streaming', action="store_true",
-                            help="true streaming evaluation for Demucs")
 
-    parser.add_argument("--batch_size", default=1, type=int, help="batch size")
+
     args = parser.parse_args()
     print(args)
     if args.mode == 'sample':
         print(args.pad_input)
         denoise_sample(args.wav_input, args.wav_output, args.sample_rate, args.pad_input)
     elif args.mode == 'test':
-        test_on_gap(args.dataset_path, args.wav_output, args.sample_rate, args.pad_input, args.suffix_clean)
+        test_on_gap(args.dataset_path, args.wav_output, args.sample_rate, args.pad_input, args.suffix_clean, args.gru)
     else:
         print("Selected --mode is not supported!")
         exit(1)

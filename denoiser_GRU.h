@@ -13,6 +13,8 @@
 
 #define __PREFIX(x) denoiser_GRU ## x
 #include "denoiser_GRUKernels.h"
+#define denoiser_L1_SIZE _denoiser_GRU_L1_Memory_SIZE
+#define denoiser_L2_SIZE _denoiser_GRU_L2_Memory_SIZE
 
 extern AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash);
 

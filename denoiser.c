@@ -387,7 +387,7 @@ void denoiser(void)
 
 
     /****
-        Read Data from file using denoiser_L2_Memory as temporary buffer
+        Read Data from file using __PREFIX(_L2_Memory) as temporary buffer
     ****/
 #if IS_INPUT_STFT == 0 
 #if IS_FAKE_SIGNAL_IN == 0
@@ -398,14 +398,14 @@ void denoiser(void)
 #endif
 
     // allocate L2 Memory
-    denoiser_L2_Memory = pi_l2_malloc(_denoiser_L2_Memory_SIZE);
-    if (denoiser_L2_Memory == 0) {
+    __PREFIX(_L2_Memory) = pi_l2_malloc(denoiser_L2_SIZE);
+    if (__PREFIX(_L2_Memory) == 0) {
         printf("Error when allocating L2 buffer\n");
         pmsis_exit(18);        
     }
 
 #ifndef SILENT
-    printf("After the malloc %x\n", denoiser_L2_Memory);    
+    printf("After the malloc %x\n", __PREFIX(_L2_Memory));    
     pi_l2_malloc_dump();
 #endif
 
@@ -428,7 +428,7 @@ void denoiser(void)
 //    if (ReadWavFromFile("../../../samples/sample_0000.wav", 
 //    if (ReadWavFromFile("../../../test_accuracy/test_out.wav", 
     if (ReadWavFromFile("../../../samples/test_py.wav", 
-            denoiser_L2_Memory, AUDIO_BUFFER_SIZE*sizeof(short), &header_info)){
+            __PREFIX(_L2_Memory), AUDIO_BUFFER_SIZE*sizeof(short), &header_info)){
         PRINTF("\nError reading wav file\n");
         pmsis_exit(1);
     }
@@ -438,22 +438,22 @@ void denoiser(void)
     printf("Finished Read wav.\n");
 
     // copy input data to L3
-    pi_ram_write(&HyperRam, inSig,   denoiser_L2_Memory, num_samples * sizeof(short));
+    pi_ram_write(&HyperRam, inSig,   __PREFIX(_L2_Memory), num_samples * sizeof(short));
 
 
     // Reset Output Buffer and copy to L3
-    short * out_temp_buffer = (short *) denoiser_L2_Memory;
+    short * out_temp_buffer = (short *) __PREFIX(_L2_Memory);
     for(int i=0; i < num_samples; i++){
         out_temp_buffer[i] = 0;
     }
-    pi_ram_write(&HyperRam, outSig,   denoiser_L2_Memory, num_samples * sizeof(short));
+    pi_ram_write(&HyperRam, outSig,   __PREFIX(_L2_Memory), num_samples * sizeof(short));
 
 #ifndef SILENT
     printf("Before the free\n");    
     pi_l2_malloc_dump();
 #endif
 
-    pi_l2_free(denoiser_L2_Memory,_denoiser_L2_Memory_SIZE);
+    pi_l2_free(__PREFIX(_L2_Memory),denoiser_L2_SIZE);
 
 #ifndef SILENT
     printf("After the free\n");    
@@ -709,8 +709,8 @@ void denoiser(void)
 #if IS_INPUT_STFT == 0
 
     // allocate L2 Memory
-    denoiser_L2_Memory = pi_l2_malloc(_denoiser_L2_Memory_SIZE);
-    if (denoiser_L2_Memory == 0) {
+    __PREFIX(_L2_Memory) = pi_l2_malloc(denoiser_L2_SIZE);
+    if (__PREFIX(_L2_Memory) == 0) {
         printf("Error when allocating L2 buffer\n");
         pmsis_exit(18);        
     }
@@ -721,21 +721,21 @@ void denoiser(void)
 #endif
 
     // copy input data to L3
-    pi_ram_read(&HyperRam, outSig,   denoiser_L2_Memory, num_samples * sizeof(short));
+    pi_ram_read(&HyperRam, outSig,   __PREFIX(_L2_Memory), num_samples * sizeof(short));
     
 
     // final sample 
-    out_temp_buffer = (short int * ) denoiser_L2_Memory;
+    out_temp_buffer = (short int * ) __PREFIX(_L2_Memory);
     PRINTF("\nAudio Out: ");
     for (int i= 0 ; i<num_samples; i++){
         PRINTF("%f, ", ((float) out_temp_buffer[i] )/(1<<15)  );
     }
     PRINTF("\n");
 
-    WriteWavToFile("test_gap.wav", 16, 16000, 1, (uint32_t *) denoiser_L2_Memory, num_samples* sizeof(short));
+    WriteWavToFile("test_gap.wav", 16, 16000, 1, (uint32_t *) __PREFIX(_L2_Memory), num_samples* sizeof(short));
     printf("Writing wav file to test_gap.wav completed successfully\n");
 
-    pi_l2_free(denoiser_L2_Memory,_denoiser_L2_Memory_SIZE);
+    pi_l2_free(__PREFIX(_L2_Memory),denoiser_L2_SIZE);
 #endif
 
 
