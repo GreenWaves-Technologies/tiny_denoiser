@@ -10,6 +10,7 @@
 /* Autotiler includes. */
 #include "Gap.h"
 
+//#include "DSP_Lib.h"
 #ifdef GRU
     #include "denoiser_GRU.h"
 #else
@@ -57,7 +58,7 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 #if DTYPE == 0
     #define DATATYPE_SIGNAL float16
 #elif DTYPE == 1
-    #define DATATYPE_SIGNAL float16
+    #define DATATYPE_SIGNAL float16alt
 #else
     #define DATATYPE_SIGNAL short
 #endif
@@ -151,10 +152,10 @@ static void RunSTFT()
     ta = gap_cl_readhwtimer();
     // compute the magnitude of the STFT components
     for (int i=0; i<AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++){
-        f16 STFT_Real_Part = STFT_Spectrogram[2*i];
-        f16 STFT_Imag_Part = STFT_Spectrogram[2*i+1];
+        DATATYPE_SIGNAL STFT_Real_Part = STFT_Spectrogram[2*i];
+        DATATYPE_SIGNAL STFT_Imag_Part = STFT_Spectrogram[2*i+1];
 //        STFT_Magnitude[i] = (f16) (sqrt((float) (STFT_Real_Part*STFT_Real_Part + STFT_Imag_Part*STFT_Imag_Part) ));
-        STFT_Magnitude[i] = __builtin_pulp_f16sqrt (STFT_Real_Part*STFT_Real_Part + STFT_Imag_Part*STFT_Imag_Part);
+        STFT_Magnitude[i] = SqrtF16 (STFT_Real_Part*STFT_Real_Part + STFT_Imag_Part*STFT_Imag_Part);
     }
     ti = gap_cl_readhwtimer() - ta;
 
@@ -247,15 +248,15 @@ static void RunDenoiser()
 #endif
 
 // debug
-#if DTYPE == 1
-  printf("Going to cast the input from f16 to bf16: \n");
-  float16alt * temp_bfp16 = (float16alt * ) STFT_Magnitude;
-  for(int i = 0 ; i<257; i++){
-    temp_bfp16[i] = (float16alt) STFT_Magnitude[i];
-    printf("%f, ", temp_bfp16[i]);
-  }
-  printf("\n");
-#endif
+//#if DTYPE == 1
+//  printf("Going to cast the input from f16 to bf16: \n");
+//  float16alt * temp_bfp16 = (float16alt * ) STFT_Magnitude;
+//  for(int i = 0 ; i<257; i++){
+//    temp_bfp16[i] = (float16alt) STFT_Magnitude[i];
+//    printf("%f, ", temp_bfp16[i]);
+//  }
+//  printf("\n");
+//#endif
 
   __PREFIX(CNN)(
         STFT_Magnitude,  
@@ -272,13 +273,13 @@ static void RunDenoiser()
         STFT_Magnitude
     );
 
-#if DTYPE == 1
-  printf("Going to cast the output from bf16 to f16\n");
-  for(int i = 0 ; i<257; i++){
-    STFT_Magnitude[i] = (float16) temp_bfp16[i];
-    printf("%f, ", STFT_Magnitude[i]);
-  }
-#endif
+//#if DTYPE == 1
+//  printf("Going to cast the output from bf16 to f16\n");
+//  for(int i = 0 ; i<257; i++){
+//    STFT_Magnitude[i] = (float16) temp_bfp16[i];
+//    printf("%f, ", STFT_Magnitude[i]);
+//  }
+//#endif
 
 #ifdef GAPUINO
   pi_gpio_pin_write(&gpio, GPIO_OUT, 0);
@@ -388,10 +389,10 @@ void denoiser(void)
     // Reset LSTM
     ResetLSTM = 1;
     for(int i=0; i<RNN_STATE_DIM_0; i++){
-        LSTM_STATE_0_I[i] = 0.0;
+        LSTM_STATE_0_I[i] = (DATATYPE_SIGNAL) 0.0;
     }
     for(int i=0; i<RNN_STATE_DIM_1; i++){
-        LSTM_STATE_1_I[i] = 0.0;
+        LSTM_STATE_1_I[i] = (DATATYPE_SIGNAL) 0.0;
     }
 
     /****
@@ -402,7 +403,7 @@ void denoiser(void)
 
 #ifndef SILENT
     printf("Before the malloc\n");    
-    pi_l2_malloc_dump();
+    //pi_l2_malloc_dump();
 #endif
 
     // allocate L2 Memory
@@ -414,7 +415,7 @@ void denoiser(void)
 
 #ifndef SILENT
     printf("After the malloc %x\n", __PREFIX(_L2_Memory));    
-    pi_l2_malloc_dump();
+    //pi_l2_malloc_dump();
 #endif
 
     /***
@@ -458,14 +459,14 @@ void denoiser(void)
 
 #ifndef SILENT
     printf("Before the free\n");    
-    pi_l2_malloc_dump();
+    //pi_l2_malloc_dump();
 #endif
 
     pi_l2_free(__PREFIX(_L2_Memory),denoiser_L2_SIZE);
 
 #ifndef SILENT
     printf("After the free\n");    
-    pi_l2_malloc_dump();
+    //pi_l2_malloc_dump();
 #endif
 
 
@@ -700,7 +701,7 @@ void denoiser(void)
 
 #ifndef SILENT
     printf("\nBefore Destruct: \n");
-    pi_l2_malloc_dump();
+    //pi_l2_malloc_dump();
 #endif
 
 #ifndef NN_INF_NOT
@@ -709,7 +710,7 @@ void denoiser(void)
 
 #ifndef SILENT
     printf("\nAfter Destruct: \n");
-    pi_l2_malloc_dump();
+    //pi_l2_malloc_dump();
 #endif
 
 
@@ -725,7 +726,7 @@ void denoiser(void)
 
 #ifndef SILENT
     printf("\nAfter Allocatation: \n");
-    pi_l2_malloc_dump();
+    //pi_l2_malloc_dump();
 #endif
 
     // copy input data to L3

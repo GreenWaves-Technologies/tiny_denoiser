@@ -11,11 +11,15 @@ from pystoi import stoi
 
 
 
-def run_on_gap_gvsoc(input_file, output_file, compile=True, gru=False):
+def run_on_gap_gvsoc(input_file, output_file, compile=True, gru=False, quant_bfp16=False ):
+    runner_args = "" 
+    runner_args += " GRU=1" if gru else "" 
+    runner_args += " BF16=1" if gru else ""
+
     if compile:
-        os.system("make clean all run platform=gvsoc SILENT=1"+" GRU=1" if gru else "")
+        os.system("make clean all run platform=gvsoc SILENT=1"+ runner_args)
     else:
-        os.system("make run platform=gvsoc SILENT=1"+" GRU=1" if gru else "")
+        os.system("make run platform=gvsoc SILENT=1" + runner_args)
     return True
 
 def denoise_sample(input_file, output_file, samplerate, padding):
@@ -36,7 +40,7 @@ def denoise_sample(input_file, output_file, samplerate, padding):
     print("Clean audio file stored in: ", output_file)
     return 0
 
-def test_on_gap(dataset_path, output_file, samplerate, padding, suffix_cleanfile, gru):
+def test_on_gap(dataset_path, output_file, samplerate, padding, suffix_cleanfile, gru, quant_bfp16):
     
     # set noisy and clean path
     noisy_path = dataset_path + '/noisy/'
@@ -80,7 +84,7 @@ def test_on_gap(dataset_path, output_file, samplerate, padding, suffix_cleanfile
                 data = np.pad(data, (padding, padding))
             sf.write('samples/test_py.wav', data, samplerate)
     
-            run_on_gap_gvsoc('samples/test_py.wav', output_file, compile=compile_GAP, gru=gru)
+            run_on_gap_gvsoc('samples/test_py.wav', output_file, compile=compile_GAP, gru=gru, quant_bfp16=quant_bfp16)
             compile_GAP = False
 
             if not os.path.isfile(output_file):
@@ -167,6 +171,8 @@ if __name__ == "__main__":
                         help="Suffix of the clean smaples in test mode. If empy no clean sample is stored")
     parser.add_argument('--gru', action="store_true",
                             help="Set GRU in case of a GRU model")
+    parser.add_argument('--bfp16', action="store_true",
+                            help="Set quantization to BFP16")
 
     parser.add_argument('--dry', type=float, default=0,
                         help='dry/wet knob coefficient. 0 is only input signal, 1 only denoised.')
@@ -178,7 +184,8 @@ if __name__ == "__main__":
         print(args.pad_input)
         denoise_sample(args.wav_input, args.wav_output, args.sample_rate, args.pad_input)
     elif args.mode == 'test':
-        test_on_gap(args.dataset_path, args.wav_output, args.sample_rate, args.pad_input, args.suffix_clean, args.gru)
+        test_on_gap(args.dataset_path, args.wav_output, args.sample_rate, args.pad_input, 
+            args.suffix_clean, args.gru, args.bfp16)
     else:
         print("Selected --mode is not supported!")
         exit(1)

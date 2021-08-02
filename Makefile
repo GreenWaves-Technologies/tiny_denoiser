@@ -117,7 +117,7 @@ else
 		TOTAL_STACK_SIZE=$(shell expr $(CLUSTER_STACK_SIZE) \+ $(CLUSTER_SLAVE_STACK_SIZE) \* $(CLUSTER_NUM_CORES))
 		MODEL_L1_MEMORY=$(shell expr 120000 \- $(TOTAL_STACK_SIZE))
 	#	MODEL_L2_MEMORY=1300000
-		MODEL_L2_MEMORY=1000000
+		MODEL_L2_MEMORY=500000
 		MODEL_L3_MEMORY=8000000
 
 	else
@@ -146,7 +146,7 @@ include $(RULES_DIR)/at_common_decl.mk
 include stft_model.mk
 
 RAM_FLASH_TYPE ?= HYPER
-PMSIS_OS=pulpos
+#PMSIS_OS=pulpos
 
 ifeq '$(RAM_FLASH_TYPE)' 'HYPER'
 APP_CFLAGS += -DUSE_HYPER
@@ -216,6 +216,7 @@ ifeq 	'$(QUANT_BITS)' 'FP16'
 
 else ifeq 	'$(QUANT_BITS)' 'BFP16'
 	APP_CFLAGS += -DDTYPE=1
+	APP_CFLAGS += -DF16_DSP_BFLOAT
 
 else
 	APP_CFLAGS += -DDTYPE=2
@@ -269,7 +270,7 @@ test_accuracy_tflite:
 	python utils/test_accuracy_tflite.py --tflite_model $(TRAINED_TFLITE_MODEL) --dct_coefficient_count $(DCT_COUNT) --window_size_ms $(FRAME_SIZE) --window_stride_ms $(FRAME_STEP) --use_power_spectrogram $(USE_POWER)
 
 # all depends on the model
-all:: model gen_fft_code
+#all:: model gen_fft_code
 
 clean:: clean_model clean_fft_code
 	rm -rf BUILD_MODEL*
