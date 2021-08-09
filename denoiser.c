@@ -155,7 +155,9 @@ static void RunSTFT()
         DATATYPE_SIGNAL STFT_Real_Part = STFT_Spectrogram[2*i];
         DATATYPE_SIGNAL STFT_Imag_Part = STFT_Spectrogram[2*i+1];
 //        STFT_Magnitude[i] = (f16) (sqrt((float) (STFT_Real_Part*STFT_Real_Part + STFT_Imag_Part*STFT_Imag_Part) ));
-        STFT_Magnitude[i] = SqrtF16 (STFT_Real_Part*STFT_Real_Part + STFT_Imag_Part*STFT_Imag_Part);
+        DATATYPE_SIGNAL STFT_Squared = STFT_Real_Part*STFT_Real_Part + STFT_Imag_Part*STFT_Imag_Part ;
+        STFT_Magnitude[i] = SqrtF16 (STFT_Squared);
+//        STFT_Magnitude[i] = (DATATYPE_SIGNAL) __builtin_pulp_f32sqrt((float) STFT_Squared);
     }
     ti = gap_cl_readhwtimer() - ta;
 
@@ -293,7 +295,7 @@ static switch_fs_t fs;
 
 void denoiser(void)
 {
-    PRINTF("Entering main controller\n");
+    printf("Entering main controller\n");
 #ifdef NN_INF_NOT
     PRINTF("NN_INF_NOT is defined\n");
 #endif
@@ -307,7 +309,7 @@ void denoiser(void)
     pi_freq_set(PI_FREQ_DOMAIN_CL, FREQ_CL*1000*1000);
 //    pi_freq_set(PI_FREQ_DOMAIN_PERIPH, 300*1000*1000);
     //PMU_set_voltage(voltage, 0);
-    PRINTF("Set VDD voltage as %.2f, FC Frequency as %d MHz, CL Frequency = %d MHz\n", 
+    printf("Set VDD voltage as %.2f, FC Frequency as %d MHz, CL Frequency = %d MHz\n", 
         (float)voltage/1000, FREQ_FC, FREQ_CL);
 //    pulp_write32(0x1A10414C,1);   // what is this?
 
