@@ -65,6 +65,7 @@ int main(int argc, char **argv)
       0,          // ctrl
       1,          // all the frames
       N_FFT,      // Nfft
+      0,          //InvertWindow
       FLOAT16     // datatype
     );
 
