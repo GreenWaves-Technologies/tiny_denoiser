@@ -144,7 +144,6 @@ MODEL_SIZE_CFLAGS = -DAT_INPUT_HEIGHT=$(AT_INPUT_HEIGHT) -DAT_INPUT_WIDTH=$(AT_I
 
 include common/model_decl.mk
 include $(RULES_DIR)/at_common_decl.mk
-#include mfcc_model.mk
 include stft_model.mk
 
 RAM_FLASH_TYPE ?= HYPER
