@@ -28,6 +28,11 @@
 //uncomment if using sqrt from math.h 
 //#include <math.h>
 
+#ifdef F16_DSP_BFLOAT
+#define SqrtF16(a) __builtin_pulp_f16altsqrt(a)
+#else
+#define SqrtF16(a) __builtin_pulp_f16sqrt(a)
+#endif
 
 
 #define  WAV_BUFFER_SIZE    16000 // 1sec@16kHz
