@@ -3,7 +3,7 @@ adjust
 fusions --scale8
 #aquant samples/test.wav -f 8 --scheme SQ8
 fquant
-qtune * float float16
+qtune --step * scheme=float float_type=float16
 
 qshow
 

@@ -7,7 +7,7 @@ nodeoption GRU_136 RNN_STATES_AS_INPUTS 1
 
 
 fquant
-qtune * float float16
+qtune --step * scheme=float float_type=float16
 
 qshow
 

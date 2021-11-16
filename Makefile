@@ -19,6 +19,8 @@ GRU?=0
 SILENT?=0
 DEBUG?=0
 DEBUG_STFT?=0
+
+NNTOOL_EXTRA_FLAGS =
 ifeq 		'$(QUANT_BITS)' '8'
 	NNTOOL_SCRIPT=model/nntool_script_8
 	MODEL_SQ8=1
@@ -33,6 +35,7 @@ else ifeq 	'$(QUANT_BITS)' 'NE16'
 
 else ifeq 	'$(QUANT_BITS)' 'FP16'
 	MODEL_FP16=1
+	NNTOOL_EXTRA_FLAGS=--use_lut_sigmoid --use_lut_tanh
 	ifeq ($(GRU), 0)
 		NNTOOL_SCRIPT=model/nntool_script_fp16
 	else
@@ -67,7 +70,6 @@ TRAINED_MODEL = $(TRAINED_MODEL_PATH)/$(MODEL_PREFIX).onnx
 MODEL_PATH = $(MODEL_BUILD)/$(MODEL_PREFIX).onnx
 TENSORS_DIR = $(MODEL_BUILD)/tensors
 MODEL_TENSORS = $(MODEL_BUILD)/$(MODEL_PREFIX)_L3_Flash_Const.dat
-NNTOOL_EXTRA_FLAGS =
 
 #Test Samples
 IS_FAKE_SIGNAL_IN?=0

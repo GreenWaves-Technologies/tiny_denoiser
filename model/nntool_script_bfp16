@@ -9,7 +9,7 @@ nodeoption LSTM_144 LSTM_OUTPUT_C_STATE 1
 
 
 fquant
-qtune * float bfloat16
+qtune --step * scheme=float float_type=bfloat16
 
 qshow
 

@@ -28,6 +28,11 @@
 //uncomment if using sqrt from math.h 
 //#include <math.h>
 
+#ifdef F16_DSP_BFLOAT
+#define SqrtF16(a) __builtin_pulp_f16altsqrt(a)
+#else
+#define SqrtF16(a) __builtin_pulp_f16sqrt(a)
+#endif
 
 
 #define  WAV_BUFFER_SIZE    16000 // 1sec@16kHz
@@ -436,9 +441,9 @@ void denoiser(void)
 
     PRINTF("Reading wav...\n");
     header_struct header_info;
-//    if (ReadWavFromFile("../../../samples/sample_0000.wav", 
+    if (ReadWavFromFile("../../../samples/sample_0000.wav", 
 //    if (ReadWavFromFile("../../../test_accuracy/test_out.wav", 
-    if (ReadWavFromFile("../../../samples/test_py.wav", 
+//    if (ReadWavFromFile("../../../samples/test_py.wav", 
             __PREFIX(_L2_Memory), AUDIO_BUFFER_SIZE*sizeof(short), &header_info)){
         PRINTF("\nError reading wav file\n");
         pmsis_exit(1);
