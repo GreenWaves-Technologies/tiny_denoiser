@@ -22,14 +22,14 @@ DEBUG_STFT?=0
 
 NNTOOL_EXTRA_FLAGS =
 ifeq 		'$(QUANT_BITS)' '8'
-	NNTOOL_SCRIPT=model/nntool_script_8
+	NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_8
 	MODEL_SQ8=1
 
 else ifeq 	'$(QUANT_BITS)' '16'
-	NNTOOL_SCRIPT=model/nntool_script
+	NNTOOL_SCRIPT=model/nntool_scripts/nntool_script
 
 else ifeq 	'$(QUANT_BITS)' 'NE16'
-	NNTOOL_SCRIPT=model/nntool_script_ne16
+	NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_ne16
 	MODEL_NE16=1
 	MODEL_SQ8=1
 
@@ -37,13 +37,13 @@ else ifeq 	'$(QUANT_BITS)' 'FP16'
 	MODEL_FP16=1
 	NNTOOL_EXTRA_FLAGS=--use_lut_sigmoid --use_lut_tanh
 	ifeq ($(GRU), 0)
-		NNTOOL_SCRIPT=model/nntool_script_fp16
+		NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_fp16
 	else
-		NNTOOL_SCRIPT=model/nntool_script_fp16_gru
+		NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_fp16_gru
 	endif
 
 else ifeq 	'$(QUANT_BITS)' 'BFP16'
-	NNTOOL_SCRIPT=model/nntool_script_bfp16
+	NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_bfp16
 	MODEL_FP16=1
 
 else

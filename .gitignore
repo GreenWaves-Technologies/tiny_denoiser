@@ -1,5 +1,4 @@
 *.dat
-nntool_script
 *_emul
 samples/speech_dataset
 *__pycache__*
