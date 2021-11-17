@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 GreenWaves Technologies
+ * Copyright (C) 2021 GreenWaves Technologies
  * All rights reserved.
  *
  * This software may be modified and distributed under the terms
@@ -7,51 +7,36 @@
  *
  */
 
-/* Autotiler includes. */
+// GAP Libraries and BSP
 #include "Gap.h"
+#include "bsp/ram.h"
+#include "bsp/ram/hyperram.h"
 
-//#include "DSP_Lib.h"
+// Autotiler NN functions
+#include "RFFTKernels.h"
 #ifdef GRU
     #include "denoiser_GRU.h"
 #else
     #include "denoiser.h"
 #endif
 
+// FS and Audio utils
 #include "wavIO.h"
 #include "fs_switch.h"
 
-#include "RFFTKernels.h"
 
-# include "bsp/ram.h"
-# include "bsp/ram/hyperram.h"
-
-//uncomment if using sqrt from math.h 
-//#include <math.h>
-
+// macros for F16 sqrt
 #ifdef F16_DSP_BFLOAT
-#define SqrtF16(a) __builtin_pulp_f16altsqrt(a)
+    #define SqrtF16(a) __builtin_pulp_f16altsqrt(a)
 #else
-#define SqrtF16(a) __builtin_pulp_f16sqrt(a)
+    #define SqrtF16(a) __builtin_pulp_f16sqrt(a)
 #endif
 
-
-#define  WAV_BUFFER_SIZE    16000 // 1sec@16kHz
-#define  NUM_CLASSES        12
-
-// DCT_NORMALIZATION        -> np.sqrt(1/(N_DCT))*0.5
-// NNTOOL_INPUT_SCALE_FLOAT -> 1.9372712
-// SCALE = NNTOOL_INPUT_SCALE_FLOAT*DCT_NORMALIZATION
-#define  INPUT_SCALE        236
-#define  INPUT_SCALEN       16
-
-#define NB_ELEM 8000
-#define BUFF_SIZE (NB_ELEM*2)
-#define ITER    2
-
-struct pi_device HyperRam;  // 
-
+// global struct
+struct pi_device HyperRam; 
 AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 
+// board-dependent defines
 #ifdef GAPUINO
     struct pi_device gpio;
     #define GPIO_OUT PI_GPIO_A1_PAD_13_B2 
@@ -59,7 +44,7 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
     int iter = 0;
 #endif
 
-
+// datatype for computation
 #if DTYPE == 0
     #define DATATYPE_SIGNAL float16
 #elif DTYPE == 1
@@ -68,34 +53,48 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
     #define DATATYPE_SIGNAL short
 #endif
 
+/*
+    Configuration: 
+        IS_INPUT_STFT := 0
+            IS_FAKE_SIGNAL_IN := 0
+                >> load input input wav file and compute STFT
+            IS_FAKE_SIGNAL_IN := 1
+                >> input wav is a synthetic audio vector
+        IS_INPUT_STFT := 1
+            IS_FAKE_SIGNAL_IN := 0
+                >> skip STFT computation and load STFT matrix
+            IS_FAKE_SIGNAL_IN := 1
+                >> skip STFT computation and use synthetic STFT matrix
+        APPLY_DENOISER
+*/
+
 #if IS_INPUT_STFT == 0 
-    //load the input audio signal and compute the MFCC
+    //load the input audio signal and compute the STFT
     #include "TwiddlesDef.h"
     #include "RFFTTwiddlesDef.h"
     #include "SwapTablesDef.h"
     #include "WinLUT.def"
     #include "WinLUT_f32.def"
     #ifdef __gap9__
-    #include "WinLUT_f16.def"
+        #include "WinLUT_f16.def"
     #endif
 
-// input oputput signals dynamically allocated
-#if IS_FAKE_SIGNAL_IN == 1
-    #define TOT_FRAMES 1
-#else 
-    // allocate space to load the input signal
-    #define AUDIO_BUFFER_SIZE (MAX_L2_BUFFER) // as big as the L2 autotiler
-    char *WavName = NULL;
+    // defines for audio IOs
+    #if IS_FAKE_SIGNAL_IN == 1
+        #define TOT_FRAMES 1
+    #else 
+        // allocate space to load the input signal
+        #define AUDIO_BUFFER_SIZE (MAX_L2_BUFFER) // as big as the L2 autotiler
+        char *WavName = NULL;
 
-    static uint32_t inSig;
-    static uint32_t outSig;
+        // L3 arrays to store input and output audio 
+        static uint32_t inSig;
+        static uint32_t outSig;
 
-//    PI_L2 short int inSig[AUDIO_BUFFER_SIZE];
-//    PI_L2 short int outSig[AUDIO_BUFFER_SIZE];
-#endif
+    #endif
 
 #else
-    // here the allocation in caso of stft inputs
+    // here the allocation in case of stft inputs
     #if IS_FAKE_SIGNAL_IN == 1
         #define TOT_FRAMES 1
     #else 
@@ -105,151 +104,141 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 #endif
 
 
-// computation buffers
+/* 
+    static allocation of temporary buffers
+*/
+PI_L2 DATATYPE_SIGNAL Audio_Frame[FRAME_NFFT];  // stores the clip to compute the STFT. only first FRAME_SIZE samples (<FRAME_NFFT) are valid
+PI_L2 DATATYPE_SIGNAL STFT_Spectrogram[AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2]; // the 2 is because of complex numbers
+PI_L2 DATATYPE_SIGNAL STFT_Magnitude[AT_INPUT_WIDTH*AT_INPUT_HEIGHT];     // magnitude of the precedent vectors, used as denoiser input and output
+
 PI_L2 short int Audio_Frame_temp[FRAME_SIZE];
-
-PI_L2 DATATYPE_SIGNAL Audio_Frame[FRAME_NFFT];  // only first FRAME_SIZE samples (<FRAME_NFFT) are valid
-PI_L2 DATATYPE_SIGNAL STFT_Spectrogram[AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2];   // FIXME: must be double in case float values are loaded from file
-PI_L2 DATATYPE_SIGNAL STFT_Magnitude[AT_INPUT_WIDTH*AT_INPUT_HEIGHT];
-
-
-#define RNN_STATE_DIM_0 257
-#define RNN_STATE_DIM_1 257
-PI_L2 DATATYPE_SIGNAL LSTM_STATE_0_I[RNN_STATE_DIM_0];
-PI_L2 DATATYPE_SIGNAL LSTM_STATE_0_C[RNN_STATE_DIM_0];
-PI_L2 DATATYPE_SIGNAL LSTM_STATE_1_I[RNN_STATE_DIM_1];
-PI_L2 DATATYPE_SIGNAL LSTM_STATE_1_C[RNN_STATE_DIM_1];
-
-#if IS_INPUT_STFT == 0 ///load the input audio signal and compute the MFCC
-
-static void RunSTFT()
-{
-#ifdef PERF
-    gap_cl_starttimer();
-    gap_cl_resethwtimer();
-#endif
-    unsigned int ta = gap_cl_readhwtimer();
-
-//    STFT(
-//        Audio_Frame, 
-//        STFT_Spectrogram, 
-//        R2_Twiddles_fix_256,   
-//        RFFT_Twiddles_fix_512,   
-//        R2_SwapTable_fix_256, 
-//        WinLUT
-//    );
-//    STFT(Audio_Frame, STFT_Spectrogram, R2_Twiddles_fix_256,   RFFT_Twiddles_fix_512,   R2_SwapTable_fix_256, WinLUT, PreempShift);
-//    STFT(Audio_Frame, STFT_Spectrogram, R2_Twiddles_float_256, RFFT_Twiddles_float_512, R2_SwapTable_fix_256, WinLUT_f32);
-    STFT(
-        Audio_Frame, 
-        STFT_Spectrogram, 
-        R4_Twiddles_f16_256,   
-        RFFT_Twiddles_f16_512,   
-        R4_SwapTable_fix_256, 
-        WinLUT_f16
-    );
-
-    
-    unsigned int ti = gap_cl_readhwtimer() - ta;
-
-    PRINTF("%45s: Cycles: %10d\n","STFT: ", ti );
-
-    ta = gap_cl_readhwtimer();
-    // compute the magnitude of the STFT components
-    for (int i=0; i<AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++){
-        DATATYPE_SIGNAL STFT_Real_Part = STFT_Spectrogram[2*i];
-        DATATYPE_SIGNAL STFT_Imag_Part = STFT_Spectrogram[2*i+1];
-//        STFT_Magnitude[i] = (f16) (sqrt((float) (STFT_Real_Part*STFT_Real_Part + STFT_Imag_Part*STFT_Imag_Part) ));
-        DATATYPE_SIGNAL STFT_Squared = STFT_Real_Part*STFT_Real_Part + STFT_Imag_Part*STFT_Imag_Part ;
-        STFT_Magnitude[i] = SqrtF16 (STFT_Squared);
-//        STFT_Magnitude[i] = (DATATYPE_SIGNAL) __builtin_pulp_f32sqrt((float) STFT_Squared);
-    }
-    ti = gap_cl_readhwtimer() - ta;
-
-    PRINTF("%45s: Cycles: %10d\n","Magnitude Compute: ", ti );
-}
-
-#include "istft_window.h"
-
-static void RuniSTFT()
-{
-#ifdef PERF
-    gap_cl_starttimer();
-    gap_cl_resethwtimer();
-#endif
-    unsigned int ta, ti;
-
-    ta = gap_cl_readhwtimer();
-
-#ifdef APPLY_DENOISER
-    /****
-        Apply filtering on the STFT map
-    ****/
-    ta = gap_cl_readhwtimer();
-        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-            STFT_Spectrogram[2*i]    = STFT_Spectrogram[2*i]   * STFT_Magnitude[i];
-            STFT_Spectrogram[2*i+1]  = STFT_Spectrogram[2*i+1] * STFT_Magnitude[i];
-        }
-    ti = gap_cl_readhwtimer() - ta;
-
-    PRINTF("\nSTFT Filtered: ");
-    for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2; i++ ){
-        PRINTF("%f, ", STFT_Spectrogram[i]);
-    }
-    PRINTF("\n");
-
-    PRINTF("%45s: Cycles: %10d\n","iScaling: ", ti );
-
-#endif // apply scaling
-
-
-    /****
-        Inverse iSTFT
-    ****/
-    ta = gap_cl_readhwtimer();
-
-    iSTFT(
-        STFT_Spectrogram, 
-        STFT_Spectrogram, 
-        R4_Twiddles_f16_256,   
-        RFFT_Twiddles_f16_512,   
-        R4_SwapTable_fix_256
-    );
-
-    ti = gap_cl_readhwtimer() - ta;
-    PRINTF("%45s: Cycles: %10d\n","iSTFT: ", ti );
-
-    /****
-        Inverse Hanning Filtering
-    ****/
-    ta = gap_cl_readhwtimer();
-    // applying inverse hanning windowing
-    for(int i=0;i<FRAME_SIZE;i++){
-//        printf("%f *", STFT_Spectrogram[i]);
-        Audio_Frame[i] = hanning_inv[i] * STFT_Spectrogram[i];
-//        printf(" %f(%f) --> %f\n", (DATATYPE_SIGNAL) hanning_inv[i],hanning_inv[i],Audio_Frame[i]);
-    }
-    
-    ti = gap_cl_readhwtimer() - ta;
-    PRINTF("%45s: Cycles: %10d\n","iHanning: ", ti );
-
-}
-
-
-
-#endif
-
 PI_L2 int ResetLSTM;
 
+// RNN states statically allocated to preserve the values during time
+#define RNN_STATE_DIM_0 257 // FIXME: should be replaced with model-dependent defines
+#define RNN_STATE_DIM_1 257
+PI_L2 DATATYPE_SIGNAL RNN_STATE_0_I[RNN_STATE_DIM_0];
+PI_L2 DATATYPE_SIGNAL RNN_STATE_1_I[RNN_STATE_DIM_1];
+#ifndef GRU
+PI_L2 DATATYPE_SIGNAL RNN_STATE_0_C[RNN_STATE_DIM_0];
+PI_L2 DATATYPE_SIGNAL RNN_STATE_1_C[RNN_STATE_DIM_1];
+#endif
+
+#if IS_INPUT_STFT == 0 ///load the input audio signal and compute the MFCC
+    /*
+        STFT computation
+            argument parameters are manually set based on STFT configuration
+    */
+    static void RunSTFT()
+    {
+    #ifdef PERF
+        gap_cl_starttimer();
+        gap_cl_resethwtimer();
+    #endif
+        unsigned int ta = gap_cl_readhwtimer();
+
+        // compute the STFT 
+        //      input: Audio Frame (FRAME_SIZE): 16 bits from the microphone or file
+        //      output: STFT_Spectrogram, DATATYPE_SIGNAL as output (e.g. float16)
+        STFT(
+            Audio_Frame, 
+            STFT_Spectrogram, 
+            R4_Twiddles_f16_256,   
+            RFFT_Twiddles_f16_512,   
+            R4_SwapTable_fix_256, 
+            WinLUT_f16
+        );
+
+        unsigned int ti = gap_cl_readhwtimer() - ta;
+        PRINTF("%45s: Cycles: %10d\n","STFT: ", ti );
+
+        ta = gap_cl_readhwtimer();
+        // compute the magnitude of the STFT components
+        for (int i=0; i<AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++){
+            DATATYPE_SIGNAL STFT_Real_Part = STFT_Spectrogram[2*i];
+            DATATYPE_SIGNAL STFT_Imag_Part = STFT_Spectrogram[2*i+1];
+            DATATYPE_SIGNAL STFT_Squared = STFT_Real_Part*STFT_Real_Part + STFT_Imag_Part*STFT_Imag_Part ;
+            STFT_Magnitude[i] = SqrtF16 (STFT_Squared);
+        }
+        ti = gap_cl_readhwtimer() - ta;
+
+        PRINTF("%45s: Cycles: %10d\n","Magnitude Compute: ", ti );
+    }
+
+    /*
+        iSTFT computation
+            argument parameters are manually set based on STFT configuration
+    */
+    #include "istft_window.h"   // includes the iSTFT windowing parameters
+
+    static void RuniSTFT()
+    {
+    #ifdef PERF
+        gap_cl_starttimer();
+        gap_cl_resethwtimer();
+    #endif
+        unsigned int ta, ti;
+
+    #ifdef APPLY_DENOISER
+        // if denoiser is enabled, filter the STFT spectrogram with the mask in STFT_Magnitude
+        ta = gap_cl_readhwtimer();
+            for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
+                STFT_Spectrogram[2*i]    = STFT_Spectrogram[2*i]   * STFT_Magnitude[i];
+                STFT_Spectrogram[2*i+1]  = STFT_Spectrogram[2*i+1] * STFT_Magnitude[i];
+            }
+        ti = gap_cl_readhwtimer() - ta;
+
+        // debug print
+        PRINTF("\nSTFT Filtered: ");
+        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2; i++ ){
+            PRINTF("%f, ", STFT_Spectrogram[i]);
+        }
+        PRINTF("\n");
+
+        PRINTF("%45s: Cycles: %10d\n","iScaling: ", ti );
+
+    #endif // apply scaling
+
+
+        // compute the iSTFT 
+        //      input: STFT_Spectrogram: DATATYPE_SIGNAL
+        //      output: STFT_Spectrogram, DATATYPE_SIGNAL - reusing the same buffer
+        ta = gap_cl_readhwtimer();
+        iSTFT(
+            STFT_Spectrogram, 
+            STFT_Spectrogram, 
+            R4_Twiddles_f16_256,   
+            RFFT_Twiddles_f16_512,   
+            R4_SwapTable_fix_256
+        );
+        ti = gap_cl_readhwtimer() - ta;
+        PRINTF("%45s: Cycles: %10d\n","iSTFT: ", ti );
+
+        // Inverse Hanning Windowing
+        ta = gap_cl_readhwtimer();
+        for(int i=0;i<FRAME_SIZE;i++){
+            Audio_Frame[i] = hanning_inv[i] * STFT_Spectrogram[i];
+        }
+        ti = gap_cl_readhwtimer() - ta;
+        PRINTF("%45s: Cycles: %10d\n","iHanning: ", ti );
+    }
+
+#endif  // end TF transformation 
+
+
+/*
+    Denoiser Task
+*/
 static void RunDenoiser()
 {
-// L1_Memory = __PREFIX(_L1_Memory);
 
   PRINTF("Running on cluster\n");
+
 #ifdef PERF
   gap_cl_starttimer();
   gap_cl_resethwtimer();
 #endif
+
 #ifdef GAPUINO
   pi_gpio_pin_write(&gpio, GPIO_OUT, 1 );
 #endif
@@ -265,15 +254,20 @@ static void RunDenoiser()
 //  printf("\n");
 //#endif
 
+    // Denoiser NN computation
+    //      input: STFT_Magnitude: DATATYPE_SIGNAL, 
+    //      output: STFT_Magnitude, DATATYPE_SIGNAL - reusing the same buffer
+    //      states: RNN_STATE_0_I, RNN_STATE_0_C, RNN_STATE_1_I, RNN_STATE_1_C, must be preserved
+    //      reset: only enabled at the start of the application
   __PREFIX(CNN)(
         STFT_Magnitude,  
-        LSTM_STATE_0_I,
+        RNN_STATE_0_I,
 #ifndef GRU
-        LSTM_STATE_0_C,
+        RNN_STATE_0_C,
 #endif
-        LSTM_STATE_1_I,
+        RNN_STATE_1_I,
 #ifndef GRU
-        LSTM_STATE_1_C,
+        RNN_STATE_1_C,
 #endif
         ResetLSTM, 
         ResetLSTM, 
@@ -396,10 +390,10 @@ void denoiser(void)
     // Reset LSTM
     ResetLSTM = 1;
     for(int i=0; i<RNN_STATE_DIM_0; i++){
-        LSTM_STATE_0_I[i] = (DATATYPE_SIGNAL) 0.0;
+        RNN_STATE_0_I[i] = (DATATYPE_SIGNAL) 0.0;
     }
     for(int i=0; i<RNN_STATE_DIM_1; i++){
-        LSTM_STATE_1_I[i] = (DATATYPE_SIGNAL) 0.0;
+        RNN_STATE_1_I[i] = (DATATYPE_SIGNAL) 0.0;
     }
 
     /****
