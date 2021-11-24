@@ -5,9 +5,7 @@ import matplotlib.pyplot as plt
 import argparse
 import soundfile as sf
 import librosa    
-
-from pesq import pesq
-from pystoi import stoi
+import shutil
 
 
 
@@ -16,6 +14,7 @@ def run_on_gap_gvsoc(input_file, output_file, compile=True, gru=False,
     runner_args = "" 
     runner_args += " GRU=1" if gru else "" 
     runner_args += " BF16=1" if gru else ""
+    runner_args += " WAV_FILE="+input_file
 
     if approxRNN == 'LUT':
         runner_args += " ACCURATE_MATH_RNN=2"
@@ -27,11 +26,13 @@ def run_on_gap_gvsoc(input_file, output_file, compile=True, gru=False,
     elif approxSigm == 'float':
         runner_args += " ACCURATE_MATH_SIG=1"
 
-
+    
     if compile:
-        os.system("make clean all run platform=gvsoc SILENT=1"+ runner_args)
+        run_command = "make clean all run platform=gvsoc SILENT=1"+ runner_args
     else:
-        os.system("make run platform=gvsoc SILENT=1" + runner_args)
+        run_command = "make run platform=gvsoc SILENT=1"+ runner_args
+    print("Going to run: ", run_command)
+    os.system(run_command)
     return True
 
 def denoise_sample(input_file, output_file, samplerate, padding):
@@ -44,8 +45,8 @@ def denoise_sample(input_file, output_file, samplerate, padding):
         data = np.pad(data, (padding, padding))
     sf.write('samples/test_py.wav', data, samplerate)
     
-    run_on_gap_gvsoc('samples/test_py.wav', output_file)
-
+    run_on_gap_gvsoc(input_file, output_file)
+    shututil.copyfile('BUILD/GAP9_V2/GCC_RISCV_PULPOS/test_gap.wav', output_file)
     if not os.path.isfile(output_file):
         print("Error! not any output fiule produced")
         exit(0)
@@ -55,6 +56,9 @@ def denoise_sample(input_file, output_file, samplerate, padding):
 def test_on_gap(    dataset_path, output_file, samplerate, padding, 
                     suffix_cleanfile, gru, quant_bfp16, approxRNN, approxSigm ):
     
+    from pesq import pesq
+    from pystoi import stoi
+
     # set noisy and clean path
     noisy_path = dataset_path + '/noisy/'
     clean_path = dataset_path + '/clean/'
@@ -179,7 +183,7 @@ if __name__ == "__main__":
                         help="Path of the dataset w/ subdirectories noisy and clean")
     parser.add_argument('--pad_input', type=int, default=0,
                         help="Pad the input left/right: computed as FRAME_SIZE - FRAME_HOP")
-    parser.add_argument("--wav_output", type=str, default="/home/manuele/GWT_apps/denoiser_tiny/BUILD/GAP9_V2/GCC_RISCV/test_gap.wav",
+    parser.add_argument("--wav_output", type=str, default="test_gap.wav",
                         help="Path and filename of the output wav")
     parser.add_argument("--suffix_clean", type=str, default='',
                         help="Suffix of the clean smaples in test mode. If empy no clean sample is stored")
