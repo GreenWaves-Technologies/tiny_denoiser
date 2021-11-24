@@ -46,7 +46,7 @@ def denoise_sample(input_file, output_file, samplerate, padding):
     sf.write('samples/test_py.wav', data, samplerate)
     
     run_on_gap_gvsoc(input_file, output_file)
-    shututil.copyfile('BUILD/GAP9_V2/GCC_RISCV_PULPOS/test_gap.wav', output_file)
+    shutil.copyfile('BUILD/GAP9_V2/GCC_RISCV_PULPOS/test_gap.wav', output_file)
     if not os.path.isfile(output_file):
         print("Error! not any output fiule produced")
         exit(0)
