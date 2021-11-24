@@ -372,7 +372,7 @@ void denoiser(void)
 
 #ifndef NN_INF_NOT
     /******
-        Setup Denoiser NN inference task
+        Setup Denoiser NN inference task (if enabled)
     ******/
     printf("Setup Cluster Task for inference!\n");
     struct pi_cluster_task *task_net = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
@@ -397,15 +397,11 @@ void denoiser(void)
     }
 
     /****
-        Read Data from file using __PREFIX(_L2_Memory) as temporary buffer
+        Read Audio Data from file using __PREFIX(_L2_Memory) as temporary buffer
+        Data are prepared in L3 external memory
     ****/
 #if IS_INPUT_STFT == 0 
 #if IS_FAKE_SIGNAL_IN == 0
-
-#ifndef SILENT
-    printf("Before the malloc\n");    
-    //pi_l2_malloc_dump();
-#endif
 
     // allocate L2 Memory
     __PREFIX(_L2_Memory) = pi_l2_malloc(denoiser_L2_SIZE);
@@ -414,14 +410,7 @@ void denoiser(void)
         pmsis_exit(18);        
     }
 
-#ifndef SILENT
-    printf("After the malloc %x\n", __PREFIX(_L2_Memory));    
-    //pi_l2_malloc_dump();
-#endif
-
-    /***
-        Allocate L3 buffers for audio IN/OUT
-    ***/
+    // Allocate L3 buffers for audio IN/OUT
     if (pi_ram_alloc(&HyperRam, &inSig, (uint32_t) AUDIO_BUFFER_SIZE))
     {
         printf("inSig Ram malloc failed !\n");
@@ -433,9 +422,11 @@ void denoiser(void)
         pmsis_exit(-5);
     }
 
-    PRINTF("Reading wav...\n");
+    // Read audio from file
+    PRINTF("Reading wav from: %s \n", WavName);
     header_struct header_info;
-    if (ReadWavFromFile("../../../samples/sample_0000.wav", 
+      if (ReadWavFromFile(WavName,
+//    if (ReadWavFromFile("../../../samples/sample_0000.wav", 
 //    if (ReadWavFromFile("../../../test_accuracy/test_out.wav", 
 //    if (ReadWavFromFile("../../../samples/test_py.wav", 
             __PREFIX(_L2_Memory), AUDIO_BUFFER_SIZE*sizeof(short), &header_info)){
@@ -450,7 +441,6 @@ void denoiser(void)
     // copy input data to L3
     pi_ram_write(&HyperRam, inSig,   __PREFIX(_L2_Memory), num_samples * sizeof(short));
 
-
     // Reset Output Buffer and copy to L3
     short * out_temp_buffer = (short *) __PREFIX(_L2_Memory);
     for(int i=0; i < num_samples; i++){
@@ -458,18 +448,8 @@ void denoiser(void)
     }
     pi_ram_write(&HyperRam, outSig,   __PREFIX(_L2_Memory), num_samples * sizeof(short));
 
-#ifndef SILENT
-    printf("Before the free\n");    
-    //pi_l2_malloc_dump();
-#endif
-
+    // free the temporary input memory
     pi_l2_free(__PREFIX(_L2_Memory),denoiser_L2_SIZE);
-
-#ifndef SILENT
-    printf("After the free\n");    
-    //pi_l2_malloc_dump();
-#endif
-
 
 #endif
 #endif
@@ -492,7 +472,8 @@ void denoiser(void)
 #if IS_INPUT_STFT == 0 
 
 /****
-    load the input audio signal and compute the MFCC
+    Load the input audio signal and compute the MFCC
+    Audio_Frame: includes only a single frame for audio
 ****/
 
 #if IS_FAKE_SIGNAL_IN == 1
@@ -519,10 +500,9 @@ void denoiser(void)
             (uint32_t) FRAME_SIZE*sizeof(short)
         );
 
+        // cast data from Q16.15 to DATATYPE_SIGNAL (may be float16)
         PRINTF("Audio In: ");
         for (int i= 0 ; i<FRAME_SIZE; i++){
-    //        printf("%f", ((float)inSig[i])/(1<<15) );            
-    //        Audio_Frame[i] = ((DATATYPE_SIGNAL) inSig[frame_id*FRAME_STEP+i] )/(1<<15);
             Audio_Frame[i] = ((DATATYPE_SIGNAL) in_temp_buffer[i] )/(1<<15);
             PRINTF("%f, ", Audio_Frame[i] );
         }
@@ -532,7 +512,6 @@ void denoiser(void)
             MFCC Task
         ******/
         // compute mfcc if not read from file
-
         PRINTF("\n\n****** Computing STFT ***** \n");
         task_stft->entry = &RunSTFT;
 
@@ -611,18 +590,9 @@ void denoiser(void)
 #ifndef NN_INF_NOT
         /******
             NN Denoiser Task
+                Model already constructed and never destructed
         ******/
         PRINTF("\n\n****** Denoiser ***** \n");
-
-//        PRINTF("\n\nConstructor\n");
-//        int err_construct = __PREFIX(CNN_Construct)();
-//        if (err_construct)
-//        {
-//            PRINTF("Graph constructor exited with error: %d\n", err_construct);
-//            pmsis_exit(-5);
-//        }
-//        printf("The memory base is: %x\n",denoiser_L1_Memory);
-
 
         PRINTF("Send task to cluster\n");
    	    pi_cluster_send_task_to_cl(&cluster_dev, task_net);
@@ -637,8 +607,9 @@ void denoiser(void)
             unsigned int TotalCycles = 0, TotalOper = 0;
             PRINTF("\n");
             for (int i=0; i<(sizeof(AT_GraphPerf)/sizeof(unsigned int)); i++) {
-                PRINTF("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n", AT_GraphNodeNames[i],
-                       AT_GraphPerf[i], AT_GraphOperInfosNames[i], ((float) AT_GraphOperInfosNames[i])/ AT_GraphPerf[i]);
+                PRINTF("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n", 
+                    AT_GraphNodeNames[i], AT_GraphPerf[i], AT_GraphOperInfosNames[i], 
+                    ((float) AT_GraphOperInfosNames[i])/ AT_GraphPerf[i]);
                 TotalCycles += AT_GraphPerf[i]; TotalOper += AT_GraphOperInfosNames[i];
             }
             PRINTF("\n");
@@ -647,21 +618,19 @@ void denoiser(void)
         }
         #endif  /* PERF */
 
-//        __PREFIX(CNN_Destruct)();
 
         // Deassert Reset LSTM
         ResetLSTM = 0;
 #endif  // disable nn inference
 
 
-#if IS_INPUT_STFT == 0
+#if IS_INPUT_STFT == 0 // if not loading the STFT
     /******
         ISTF Task
     ******/
     PRINTF("\n\n****** Computing iSTFT ***** \n");
-    // compute mfcc if not read from file
-    task_stft->entry = &RuniSTFT;
 
+    task_stft->entry = &RuniSTFT;
     L1_Memory = pmsis_l1_malloc(_L1_Memory_SIZE);
     if (L1_Memory==NULL){
         printf("Error allocating L1\n");
@@ -675,7 +644,6 @@ void denoiser(void)
     // check spectrogram results
     PRINTF("\nAudio Out: ");
     for (int i= 0 ; i<FRAME_SIZE; i++){
-//        printf("%f", ((float)inSig[i])/(1<<15) );
         PRINTF("%f, ", Audio_Frame[i] );
     }
     PRINTF("\n");
@@ -684,38 +652,33 @@ void denoiser(void)
 
 #if IS_FAKE_SIGNAL_IN == 0
 #if IS_INPUT_STFT == 0
+
+        // if denoising auio files, outputs are loaded to the L3 output buffer outSig
         PRINTF("Writing Frame %d/%d to the output buffer\n\n", frame_id+1, tot_frames);
 
         // Cast if needed
-        pi_ram_read(&HyperRam,  (short *) outSig + (frame_id*FRAME_STEP), Audio_Frame_temp, FRAME_SIZE * sizeof(short));
+        pi_ram_read(&HyperRam,  (short *) outSig + (frame_id*FRAME_STEP), 
+            Audio_Frame_temp, FRAME_SIZE * sizeof(short));
 
+        // from DATA_S
         for (int i= 0 ; i<FRAME_SIZE; i++){
             Audio_Frame_temp[i] += (short int)(Audio_Frame[i] * (1<<15));
-    //        PRINTF("%f", ((float)inSig[i])/(1<<15) );
-    //        Audio_Frame[i] = ((DATATYPE_SIGNAL) inSig[frame_id*FRAME_STEP+i] )/(1<<15);
         }
-        pi_ram_write(&HyperRam,  (short *) outSig + (frame_id*FRAME_STEP),   Audio_Frame_temp, FRAME_SIZE * sizeof(short));
+        pi_ram_write(&HyperRam,  (short *) outSig + (frame_id*FRAME_STEP),   
+            Audio_Frame_temp, FRAME_SIZE * sizeof(short));
 #endif
 
    }   // stop looping over frames
 #endif
 
-#ifndef SILENT
-    printf("\nBefore Destruct: \n");
-    //pi_l2_malloc_dump();
-#endif
 
 #ifndef NN_INF_NOT
     __PREFIX(CNN_Destruct)();
 #endif
 
-#ifndef SILENT
-    printf("\nAfter Destruct: \n");
-    //pi_l2_malloc_dump();
-#endif
 
 
-
+// write reults to file: test_gap.wav
 #if IS_INPUT_STFT == 0
 
     // allocate L2 Memory
@@ -725,10 +688,6 @@ void denoiser(void)
         pmsis_exit(18);        
     }
 
-#ifndef SILENT
-    printf("\nAfter Allocatation: \n");
-    //pi_l2_malloc_dump();
-#endif
 
     // copy input data to L3
     pi_ram_read(&HyperRam, outSig,   __PREFIX(_L2_Memory), num_samples * sizeof(short));
@@ -742,7 +701,8 @@ void denoiser(void)
     }
     PRINTF("\n");
 
-    WriteWavToFile("test_gap.wav", 16, 16000, 1, (uint32_t *) __PREFIX(_L2_Memory), num_samples* sizeof(short));
+    WriteWavToFile("test_gap.wav", 16, 16000, 1, 
+        (uint32_t *) __PREFIX(_L2_Memory), num_samples* sizeof(short));
     printf("Writing wav file to test_gap.wav completed successfully\n");
 
     pi_l2_free(__PREFIX(_L2_Memory),denoiser_L2_SIZE);
@@ -760,10 +720,13 @@ int main()
 {
 	PRINTF("\n\n\t *** Denoiser ***\n\n");
 
+#if IS_INPUT_STFT == 0 
+#if IS_FAKE_SIGNAL_IN == 0
     #define __XSTR(__s) __STR(__s)
     #define __STR(__s) #__s
-//#if IS_FAKE_SIGNAL_IN == 0
-//    WavName = __XSTR(AT_WAV);
-//#endif    
+    WavName = __XSTR(WAV_FILE);
+#endif    
+#endif
+
     return pmsis_kickoff((void *) denoiser);
 }
