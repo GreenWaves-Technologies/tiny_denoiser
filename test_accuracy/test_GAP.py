@@ -7,6 +7,8 @@ import soundfile as sf
 import librosa    
 import shutil
 
+from pesq import pesq
+from pystoi import stoi
 
 
 def run_on_gap_gvsoc(input_file, output_file, compile=True, gru=False, 
@@ -43,9 +45,10 @@ def denoise_sample(input_file, output_file, samplerate, padding):
     data, s = librosa.load(input_file, sr=samplerate)
     if padding:
         data = np.pad(data, (padding, padding))
-    sf.write('samples/test_py.wav', data, samplerate)
-    
-    run_on_gap_gvsoc(input_file, output_file)
+
+    file_name =  os.getcwd() + '/samples/test_py.wav'
+    sf.write(file_name, data, samplerate)
+    run_on_gap_gvsoc(file_name, output_file)
     shutil.copyfile('BUILD/GAP9_V2/GCC_RISCV_PULPOS/test_gap.wav', output_file)
     if not os.path.isfile(output_file):
         print("Error! not any output fiule produced")
@@ -56,8 +59,6 @@ def denoise_sample(input_file, output_file, samplerate, padding):
 def test_on_gap(    dataset_path, output_file, samplerate, padding, 
                     suffix_cleanfile, gru, quant_bfp16, approxRNN, approxSigm ):
     
-    from pesq import pesq
-    from pystoi import stoi
 
     # set noisy and clean path
     noisy_path = dataset_path + '/noisy/'
@@ -99,11 +100,14 @@ def test_on_gap(    dataset_path, output_file, samplerate, padding,
             data, s = librosa.load(input_file, sr=samplerate)
             if padding:
                 data = np.pad(data, (padding, padding))
-            sf.write('samples/test_py.wav', data, samplerate)
-    
-            run_on_gap_gvsoc('samples/test_py.wav', output_file, compile=compile_GAP, 
+
+            file_name =  os.getcwd() + '/samples/test_py.wav'
+            sf.write(file_name, data, samplerate)
+
+            run_on_gap_gvsoc(file_name, output_file, compile=compile_GAP, 
                 gru=gru, quant_bfp16=quant_bfp16, approxRNN=approxRNN, approxSigm=approxSigm)
             compile_GAP = False
+            shutil.copyfile('BUILD/GAP9_V2/GCC_RISCV_PULPOS/test_gap.wav', output_file)
 
             if not os.path.isfile(output_file):
                 print("Error! not any output file produced")

@@ -91,6 +91,14 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
         static uint32_t inSig;
         static uint32_t outSig;
 
+        //#define CHECKSUM
+        #ifdef CHECKSUM
+            #include "golden_sample_0000.h"
+            float error;
+            PI_L2 float STFT_Mag_Golden[] = GOLDEN_STFT_MAG;
+            PI_L2 float Denoiser_Golden[] = GOLDEN_DENOISER;
+        #endif
+
     #endif
 
 #else
@@ -426,9 +434,6 @@ void denoiser(void)
     PRINTF("Reading wav from: %s \n", WavName);
     header_struct header_info;
       if (ReadWavFromFile(WavName,
-//    if (ReadWavFromFile("../../../samples/sample_0000.wav", 
-//    if (ReadWavFromFile("../../../test_accuracy/test_out.wav", 
-//    if (ReadWavFromFile("../../../samples/test_py.wav", 
             __PREFIX(_L2_Memory), AUDIO_BUFFER_SIZE*sizeof(short), &header_info)){
         PRINTF("\nError reading wav file\n");
         pmsis_exit(1);
@@ -539,6 +544,24 @@ void denoiser(void)
         }
         PRINTF("\n");
 
+
+#ifdef CHECKSUM
+        float snr = 0.0f;
+        float p_err = 0.0f;
+        float p_sig = 0.0f;
+        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
+            float err = STFT_Magnitude[i] - STFT_Mag_Golden[i]; 
+            p_err += err * err;
+            p_sig += STFT_Magnitude[i] * STFT_Magnitude[i];
+        }
+        snr = p_sig / p_err;
+        printf("STFT Signal-to-noise ratio in linear scale: %f\n", snr);
+        if (snr > 10000.0f)     // qsnr > 40db
+            printf("--> STFT OK!\n");
+        else
+            printf("--> STFT NOK!\n");
+#endif
+
     
 
 #else ///load the STFT
@@ -601,6 +624,37 @@ void denoiser(void)
         for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
             PRINTF("%f, ",STFT_Magnitude[i]);
         }
+
+#ifdef CHECKSUM
+        #define ABS(X) ((X)>0?(X):-(X))
+        error = 0.0f;
+        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
+            if (STFT_Magnitude[i] != 0.0f)
+                error +=  ABS(Denoiser_Golden[i] - STFT_Magnitude[i]) / STFT_Magnitude[i];
+            else
+                error +=  ABS(Denoiser_Golden[i] - STFT_Magnitude[i]) / (1e-20);
+            printf("err = %f\n", ABS(Denoiser_Golden[i] - STFT_Magnitude[i]) / STFT_Magnitude[i]);
+        }
+        error = error / (AT_INPUT_WIDTH*AT_INPUT_HEIGHT);
+        printf("Relative error is: %f\n", error);
+//       if (snr > 10000.0f)     // qsnr > 40db
+//           printf("--> STFT OK!\n");
+//       else
+//           printf("--> STFT NOK!\n");
+        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
+            float err = STFT_Magnitude[i] - Denoiser_Golden[i]; 
+            p_err += err * err;
+            p_sig += STFT_Magnitude[i] * STFT_Magnitude[i];
+        }
+        snr = p_sig / p_err;
+        printf("Denoiser Signal-to-noise ratio in linear scale: %f\n", snr);
+        if (snr > 10000.0f)     // qsnr > 40db
+            printf("--> Denoiser OK!\n");
+        else
+            printf("--> Denoiser NOK!\n");
+#endif
+
+        
 
         #ifdef PERF
         {
