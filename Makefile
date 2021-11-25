@@ -45,7 +45,7 @@ else ifeq 	'$(QUANT_BITS)' 'FP16'
 else ifeq 	'$(QUANT_BITS)' 'BFP16'
 	NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_bfp16
 	MODEL_FP16=1
-
+	NNTOOL_EXTRA_FLAGS=--use_lut_sigmoid --use_lut_tanh
 else
 	$(error Quantization mode is not recognized. Choose among 8, 16, FP16 or NE16)
 endif
@@ -258,7 +258,13 @@ ifeq ($(GRU), 1)
 endif
 
 
-##### DEBUG
+# LUT based approach
+APPROX_LUT?=0
+ifeq ($(APPROX_LUT), 1)
+	APP_CFLAGS += -DFLOAT_LUT_ACTIVATIONS
+endif
+
+##### DEBUG -- to remove
 ACCURATE_MATH_RNN?=0
 ACCURATE_MATH_SIG?=0
 

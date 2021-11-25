@@ -12,22 +12,24 @@ from pystoi import stoi
 
 
 def run_on_gap_gvsoc(input_file, output_file, compile=True, gru=False, 
-                quant_bfp16=False, approxRNN='', approxSigm='' ):
+                quant_bfp16=False, approx='' ):
     runner_args = "" 
     runner_args += " GRU=1" if gru else "" 
     runner_args += " BF16=1" if gru else ""
     runner_args += " WAV_FILE="+input_file
 
-    if approxRNN == 'LUT':
-        runner_args += " ACCURATE_MATH_RNN=2"
-    elif approxRNN == 'float':
-        runner_args += " ACCURATE_MATH_RNN=1"
+#    if approxRNN == 'LUT':
+#        runner_args += " ACCURATE_MATH_RNN=2"
+#    elif approxRNN == 'float':
+#        runner_args += " ACCURATE_MATH_RNN=1"
+#
+#    if approxSigm == 'LUT':
+#        runner_args += " ACCURATE_MATH_SIG=2"
+#    elif approxSigm == 'float':
+#        runner_args += " ACCURATE_MATH_SIG=1"
 
-    if approxSigm == 'LUT':
-        runner_args += " ACCURATE_MATH_SIG=2"
-    elif approxSigm == 'float':
-        runner_args += " ACCURATE_MATH_SIG=1"
-
+    if approx == 'LUT':
+        runner_args += " APPROX_LUT=1"
     
     if compile:
         run_command = "make clean all run platform=gvsoc SILENT=1"+ runner_args
@@ -57,7 +59,7 @@ def denoise_sample(input_file, output_file, samplerate, padding):
     return 0
 
 def test_on_gap(    dataset_path, output_file, samplerate, padding, 
-                    suffix_cleanfile, gru, quant_bfp16, approxRNN, approxSigm ):
+                    suffix_cleanfile, gru, quant_bfp16, approx ):
     
 
     # set noisy and clean path
@@ -105,7 +107,7 @@ def test_on_gap(    dataset_path, output_file, samplerate, padding,
             sf.write(file_name, data, samplerate)
 
             run_on_gap_gvsoc(file_name, output_file, compile=compile_GAP, 
-                gru=gru, quant_bfp16=quant_bfp16, approxRNN=approxRNN, approxSigm=approxSigm)
+                gru=gru, quant_bfp16=quant_bfp16, approx=approx)
             compile_GAP = False
             shutil.copyfile('BUILD/GAP9_V2/GCC_RISCV_PULPOS/test_gap.wav', output_file)
 
@@ -195,11 +197,8 @@ if __name__ == "__main__":
                             help="Set GRU in case of a GRU model")
     parser.add_argument('--bfp16', action="store_true",
                             help="Set quantization to BFP16")
-    parser.add_argument("--approxRNN", type=str, default='',
-                        help="Empty | LUT | float")
-    parser.add_argument("--approxSigm", type=str, default='',
-                        help="Empty | LUT | float")
-
+    parser.add_argument("--approx", type=str, default='',
+                        help="Empty | LUT")
 
     args = parser.parse_args()
     print(args)
@@ -208,7 +207,7 @@ if __name__ == "__main__":
         denoise_sample(args.wav_input, args.wav_output, args.sample_rate, args.pad_input)
     elif args.mode == 'test':
         test_on_gap(args.dataset_path, args.wav_output, args.sample_rate, args.pad_input, 
-            args.suffix_clean, args.gru, args.bfp16, args.approxRNN, args.approxSigm)
+            args.suffix_clean, args.gru, args.bfp16, args.approx)
     else:
         print("Selected --mode is not supported!")
         exit(1)

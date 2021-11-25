@@ -4,9 +4,12 @@
 
 ## Getting Started
 ```
+make clean all run platform=gvsoc
+```
+To denoise a custom wav audio file:
+```
 make clean all run platform=gvsoc WAV_FILE=/<path_to_audio_file>/<file_name>.wav
 ```
-
 
 ## Test on GAP
 To denoise a wav file:
