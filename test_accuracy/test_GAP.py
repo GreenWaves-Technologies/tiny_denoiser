@@ -12,11 +12,11 @@ from pystoi import stoi
 
 
 def run_on_gap_gvsoc(input_file, output_file, compile=True, gru=False, 
-                quant_bfp16=False, approx='' ):
+                quant_bfp16=False,  quant_int8=False, approx='' ):
     runner_args = "" 
     runner_args += " GRU=1" if gru else "" 
-    runner_args += " BF16=1" if gru else ""
     runner_args += " WAV_FILE="+input_file
+    runner_args += " QUANT_BITS=BFP16" if quant_bfp16 else " QUANT_BITS=8" if quant_int8 else ""
 
 #    if approxRNN == 'LUT':
 #        runner_args += " ACCURATE_MATH_RNN=2"
@@ -32,7 +32,7 @@ def run_on_gap_gvsoc(input_file, output_file, compile=True, gru=False,
         runner_args += " APPROX_LUT=1"
     
     if compile:
-        run_command = "make clean all run platform=gvsoc SILENT=1"+ runner_args
+        run_command = "make all run platform=gvsoc SILENT=1"+ runner_args
     else:
         run_command = "make run platform=gvsoc SILENT=1"+ runner_args
     print("Going to run: ", run_command)
@@ -59,7 +59,7 @@ def denoise_sample(input_file, output_file, samplerate, padding):
     return 0
 
 def test_on_gap(    dataset_path, output_file, samplerate, padding, 
-                    suffix_cleanfile, gru, quant_bfp16, approx ):
+                    suffix_cleanfile, gru, quant_bfp16, quant_int8, approx ):
     
 
     # set noisy and clean path
@@ -107,7 +107,7 @@ def test_on_gap(    dataset_path, output_file, samplerate, padding,
             sf.write(file_name, data, samplerate)
 
             run_on_gap_gvsoc(file_name, output_file, compile=compile_GAP, 
-                gru=gru, quant_bfp16=quant_bfp16, approx=approx)
+                gru=gru, quant_bfp16=quant_bfp16, quant_int8=quant_int8, approx=approx)
             compile_GAP = False
             shutil.copyfile('BUILD/GAP9_V2/GCC_RISCV_PULPOS/test_gap.wav', output_file)
 
@@ -197,6 +197,8 @@ if __name__ == "__main__":
                             help="Set GRU in case of a GRU model")
     parser.add_argument('--bfp16', action="store_true",
                             help="Set quantization to BFP16")
+    parser.add_argument('--int8', action="store_true",
+                            help="Set quantization to 8 bit ") 
     parser.add_argument("--approx", type=str, default='',
                         help="Empty | LUT")
 
@@ -207,7 +209,7 @@ if __name__ == "__main__":
         denoise_sample(args.wav_input, args.wav_output, args.sample_rate, args.pad_input)
     elif args.mode == 'test':
         test_on_gap(args.dataset_path, args.wav_output, args.sample_rate, args.pad_input, 
-            args.suffix_clean, args.gru, args.bfp16, args.approx)
+            args.suffix_clean, args.gru, args.bfp16, args.int8, args.approx)
     else:
         print("Selected --mode is not supported!")
         exit(1)
