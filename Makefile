@@ -22,8 +22,13 @@ DEBUG_STFT?=0
 
 NNTOOL_EXTRA_FLAGS =
 ifeq 		'$(QUANT_BITS)' '8'
-	NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_8
 	MODEL_SQ8=1
+	NNTOOL_EXTRA_FLAGS=--use_lut_sigmoid --use_lut_tanh
+	ifeq ($(GRU), 0)
+		NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_int8
+	else
+		NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_int8_gru # not yet here
+	endif
 
 else ifeq 	'$(QUANT_BITS)' '16'
 	NNTOOL_SCRIPT=model/nntool_scripts/nntool_script
@@ -220,8 +225,12 @@ else ifeq 	'$(QUANT_BITS)' 'BFP16'
 	APP_CFLAGS += -DDTYPE=1
 	APP_CFLAGS += -DF16_DSP_BFLOAT
 
-else
+else ifeq 	'$(QUANT_BITS)' '8'
 	APP_CFLAGS += -DDTYPE=2
+	APP_CFLAGS += -DSTD_FLOAT
+
+else
+	APP_CFLAGS += -DDTYPE=3
 
 endif
 

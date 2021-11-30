@@ -46,9 +46,14 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 
 // datatype for computation
 #if DTYPE == 0
-    #define DATATYPE_SIGNAL float16
+    #define DATATYPE_SIGNAL     float16
+    #define DATATYPE_SIGNAL_INF float16
 #elif DTYPE == 1
-    #define DATATYPE_SIGNAL float16alt
+    #define DATATYPE_SIGNAL     float16alt
+    #define DATATYPE_SIGNAL_INF float16alt
+#elif DTYPE == 2
+    #define DATATYPE_SIGNAL     float16
+    #define DATATYPE_SIGNAL_INF char
 #else
     #define DATATYPE_SIGNAL short
 #endif
@@ -67,7 +72,7 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
                 >> skip STFT computation and use synthetic STFT matrix
         APPLY_DENOISER
 */
-#define CHECKSUM
+//#define CHECKSUM
 
 #if IS_INPUT_STFT == 0 
     //load the input audio signal and compute the STFT
@@ -136,11 +141,11 @@ PI_L2 int ResetLSTM;
 // RNN states statically allocated to preserve the values during time
 #define RNN_STATE_DIM_0 257 // FIXME: should be replaced with model-dependent defines
 #define RNN_STATE_DIM_1 257
-PI_L2 DATATYPE_SIGNAL RNN_STATE_0_I[RNN_STATE_DIM_0];
-PI_L2 DATATYPE_SIGNAL RNN_STATE_1_I[RNN_STATE_DIM_1];
+PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_0_I[RNN_STATE_DIM_0];
+PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_1_I[RNN_STATE_DIM_1];
 #ifndef GRU
-PI_L2 DATATYPE_SIGNAL RNN_STATE_0_C[RNN_STATE_DIM_0];
-PI_L2 DATATYPE_SIGNAL RNN_STATE_1_C[RNN_STATE_DIM_1];
+PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_0_C[RNN_STATE_DIM_0];
+PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_1_C[RNN_STATE_DIM_1];
 #endif
 
 #if IS_INPUT_STFT == 0 ///load the input audio signal and compute the MFCC
@@ -263,15 +268,20 @@ static void RunDenoiser()
 #endif
 
 // debug
-//#if DTYPE == 1
-//  printf("Going to cast the input from f16 to bf16: \n");
-//  float16alt * temp_bfp16 = (float16alt * ) STFT_Magnitude;
-//  for(int i = 0 ; i<257; i++){
-//    temp_bfp16[i] = (float16alt) STFT_Magnitude[i];
-//    printf("%f, ", temp_bfp16[i]);
-//  }
-//  printf("\n");
-//#endif
+DATATYPE_SIGNAL_INF * net_in_out = (DATATYPE_SIGNAL_INF * ) STFT_Magnitude;
+#if DTYPE == 2
+  // scale and quantize
+  PRINTF("\nQuantized Inputs: ");
+  int temp ; 
+  for(int i = 0 ; i<257; i++){
+    temp  = (DATATYPE_SIGNAL_INF) ( (DATATYPE_SIGNAL) STFT_Magnitude[i] /  SCALE_IN);
+    if (temp > 127) net_in_out[i] = 127;
+    else if (temp < -128) net_in_out[i] = -128;
+    else net_in_out[i] = temp;
+    PRINTF("%d, ", temp);
+  }
+  PRINTF("\n");
+#endif
 
     // Denoiser NN computation
     //      input: STFT_Magnitude: DATATYPE_SIGNAL, 
@@ -293,6 +303,28 @@ static void RunDenoiser()
         STFT_Magnitude
     );
 
+#if DTYPE == 2
+  // scale and dequantize the output
+  PRINTF("Denoiser Output INT8:\n");
+  for(int i = 0 ; i<257; i++){
+    PRINTF("%d, ", (char) net_in_out[i]);
+    STFT_Magnitude [257-i] = (DATATYPE_SIGNAL) net_in_out[257-i] * (DATATYPE_SIGNAL) SCALE_OUT ;
+  }
+  PRINTF("\n");
+
+//    #define DATATYPE_SIGNAL     float16
+//    #define DATATYPE_SIGNAL_INF char
+//  
+//  //scale the state
+//  for(int i = 0 ; i<257; i++){
+//    temp  = (DATATYPE_SIGNAL_INF) ( (DATATYPE_SIGNAL) LSTM_STATE_0_I[i] /  SCALE_IN);
+//    if (temp > 127) net_in_out[i] = 127;
+//    else if (temp < -128) net_in_out[i] = -128;
+//    else net_in_out[i] = temp;
+//    PRINTF("%d, ", temp);
+//  }
+
+#endif
 //#if DTYPE == 1
 //  printf("Going to cast the output from bf16 to f16\n");
 //  for(int i = 0 ; i<257; i++){
@@ -409,10 +441,10 @@ void denoiser(void)
     // Reset LSTM
     ResetLSTM = 1;
     for(int i=0; i<RNN_STATE_DIM_0; i++){
-        RNN_STATE_0_I[i] = (DATATYPE_SIGNAL) 0.0;
+        RNN_STATE_0_I[i] = (DATATYPE_SIGNAL_INF) 0.0f;
     }
     for(int i=0; i<RNN_STATE_DIM_1; i++){
-        RNN_STATE_1_I[i] = (DATATYPE_SIGNAL) 0.0;
+        RNN_STATE_1_I[i] = (DATATYPE_SIGNAL_INF) 0.0f;
     }
 
     /****
