@@ -25,6 +25,10 @@ quant_sample_path = sys.argv[1]
 quantization_bits = sys.argv[2]
 gru = int(sys.argv[3])
 print(gru)
+
+path_model_build = sys.argv[4]
+print(path_model_build)
+
 if gru == 1:
 	print('This is a GRU-based model')
 else:
@@ -32,9 +36,17 @@ else:
 
 print('Quantization samples from: ', quant_sample_path, 'quantized to ', quantization_bits, ' bits')
 
+
+quantization_file = path_model_build + "data_quant.json"
+if os.path.isfile(quantization_file):
+	print("Quantization file is already here!")
+	exit()
+
+print("Going to collect the quantization stats")
+
 # parameters
 SR = 16000
-use_ema = True
+use_ema = False
 lstm_hidden_states = 256
 
 # defines
@@ -108,47 +120,9 @@ for filename in os.listdir(quant_sample_path):
 		lim_2 = max_stats if max_stats > lim_2 else lim_2   
 		print('rnn_1_i_state | Sample: ',i,', Max: ', max_stats, 'Glob Max', lim_2)
 				
-	break
 
-		
-# collect statistics
-
-from cmd2 import Cmd2ArgumentParser, with_argparser
-from utils.stats_funcs import STATS_BITS
-QUANTIZATION_SCHEMES = ['SQ8', 'POW2']
-from interpreter.shell_utils import glob_input_files, input_options
-from quantization.handlers_helpers import (add_options_to_parser,
-										   get_options_from_args)
-parser_aquant = Cmd2ArgumentParser()
-parser_aquant.add_argument('-f',
-							   '--force_width',
-							   choices=STATS_BITS, type=int, default=0,
-							   help='force all layers to this bit-width in case of POW2 scheme, ' +
-							   'SQ8 will automatically force 8-bits')
-parser_aquant.add_argument('-s', '--scheme',
-							   type=str, choices=QUANTIZATION_SCHEMES, default='SQ8',
-							   help='quantize with scaling factors (TFlite quantization-like) [default] or POW2')
-
-add_options_to_parser(parser_aquant)
-input_options(parser_aquant)
-args_quant = parser_aquant.parse_args([])
-args_quant
-opts = get_options_from_args(args_quant)
-print(opts)
-
-
-scheme = 'SQ8' if quantization_bits == '8' else 'POW2'
-
+# get quantization stas and dump to file
 astats = stats_collector.stats
-
-
-
-quantizer = NewQuantizer(G, reset_all=True)
-quantizer.options = opts
-quantizer.schemes.append(args_quant.scheme)
-quantizer.set_stats(astats)
-quantizer.quantize()
-G.add_dimensions()
-
-with open('BUILD_MODEL_8BIT/data_quant.json', 'wb') as fp:
+with open(quantization_file, 'wb') as fp:
     pickle.dump(astats, fp, protocol=pickle.HIGHEST_PROTOCOL)
+

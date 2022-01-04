@@ -669,16 +669,16 @@ void denoiser(void)
         #ifdef PERF
         {
             unsigned int TotalCycles = 0, TotalOper = 0;
-            PRINTF("\n");
+            printf("\n");
             for (int i=0; i<(sizeof(AT_GraphPerf)/sizeof(unsigned int)); i++) {
-                PRINTF("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n", 
+                printf("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n", 
                     AT_GraphNodeNames[i], AT_GraphPerf[i], AT_GraphOperInfosNames[i], 
                     ((float) AT_GraphOperInfosNames[i])/ AT_GraphPerf[i]);
                 TotalCycles += AT_GraphPerf[i]; TotalOper += AT_GraphOperInfosNames[i];
             }
-            PRINTF("\n");
-            PRINTF("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n", "Total", TotalCycles, TotalOper, ((float) TotalOper)/ TotalCycles);
-            PRINTF("\n");
+            printf("\n");
+            printf("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n", "Total", TotalCycles, TotalOper, ((float) TotalOper)/ TotalCycles);
+            printf("\n");
         }
         #endif  /* PERF */
 

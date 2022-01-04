@@ -112,12 +112,13 @@ def test_on_gap(    dataset_path, output_file, samplerate, padding,
 
             # change this with other script...
             import pickle
-            fp = open('model/data_quant_gru.json', 'rb')
+#            fp = open('model/data_quant_gru.json', 'rb')
+            fp = open('BUILD_MODEL_8BIT/data_quant.json', 'rb')
             astats = pickle.load(fp)
             fp.close()
             
             Opts = { 'float_type': 'float32', 'kernel_type': 'fastfloat', 'hwc': False, 
-                     'sq_bits': 8, 
+                     'sq_bits': 8,    
                      'weight_bits': 8, 
                      'force_external_size': 16, # 8
                      'narrow_weights': True, 
