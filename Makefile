@@ -27,16 +27,21 @@ ifeq 		'$(QUANT_BITS)' '8'
 	ifeq ($(GRU), 0)
 		NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_int8
 	else
-		NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_int8_gru # not yet here
+		NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_int8_gru 
 	endif
 
 else ifeq 	'$(QUANT_BITS)' '16'
 	NNTOOL_SCRIPT=model/nntool_scripts/nntool_script
 
 else ifeq 	'$(QUANT_BITS)' 'NE16'
-	NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_ne16
 	MODEL_NE16=1
 	MODEL_SQ8=1
+	ifeq ($(GRU), 0)
+		NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_ne16
+	else
+		NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_ne16_gru 
+	endif
+
 
 else ifeq 	'$(QUANT_BITS)' 'FP16'
 	MODEL_FP16=1
@@ -226,6 +231,10 @@ else ifeq 	'$(QUANT_BITS)' 'BFP16'
 	APP_CFLAGS += -DF16_DSP_BFLOAT
 
 else ifeq 	'$(QUANT_BITS)' '8'
+	APP_CFLAGS += -DDTYPE=2
+	APP_CFLAGS += -DSTD_FLOAT
+
+else ifeq 	'$(QUANT_BITS)' 'NE16'
 	APP_CFLAGS += -DDTYPE=2
 	APP_CFLAGS += -DSTD_FLOAT
 
