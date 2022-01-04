@@ -112,8 +112,8 @@ def test_on_gap(    dataset_path, output_file, samplerate, padding,
 
             # change this with other script...
             import pickle
-#            fp = open('model/data_quant_gru.json', 'rb')
-            fp = open('BUILD_MODEL_8BIT/data_quant.json', 'rb')
+            fp = open('model/data_quant_gru.json', 'rb')
+#            fp = open('BUILD_MODEL_8BIT/data_quant.json', 'rb')
             astats = pickle.load(fp)
             fp.close()
             
@@ -139,7 +139,9 @@ def test_on_gap(    dataset_path, output_file, samplerate, padding,
                 Opts['force_input_size'] = 8
                 Opts['force_output_size'] = 8
 
-
+#            Opts['force_external_size'] = 8
+#            Opts['force_input_size'] = 8
+#            Opts['force_output_size'] = 8
 
             quantizer = NewQuantizer(G, reset_all=True)
             quantizer.options = Opts
@@ -150,6 +152,8 @@ def test_on_gap(    dataset_path, output_file, samplerate, padding,
             
             if quant_ne16: # adjust after NE16 = True
                 NNToolShell.run_commands_on_graph(G, ['adjust', 'fusions --scale8'])
+            NNToolShell.run_commands_on_graph(G, ['qtune --step GRU_74,GRU_136 force_external_size=8'])
+
 
             NNToolShell.run_commands_on_graph(G, [ 'qshow'])
             print("The graph is QUANTIZED")
@@ -222,15 +226,11 @@ def test_on_gap(    dataset_path, output_file, samplerate, padding,
                     outputs = executer.execute(data, 
                         qmode=QuantizationMode.all_dequantize() if nntool_quantizer else None, 
                         silent=True)
-                    if nntool_quantizer:
-                        n_id = [4, 32, 36, 40] if quant_ne16 else [4, 31, 34, 39]
-                    else:
-                        n_id = [4, 31, 34, 39]
                     
-                    conv_0_out = outputs[n_id[0]][0]
-                    rnn_0_i_state = outputs[n_id[1]][0]
-                    rnn_1_i_state = outputs[n_id[2]][0]
-                    mag_out = outputs[n_id[3]][0]
+                    conv_0_out = outputs[G['Conv_0'].step_idx][0]
+                    rnn_0_i_state = outputs[G['GRU_74'].step_idx][0]
+                    rnn_1_i_state = outputs[G['GRU_136'].step_idx][0]
+                    mag_out = outputs[G['output_1'].step_idx][0]
 
 #                    print('conv_0_out= ', conv_0_out.squeeze())
 #                    print('rnn_0_i_state= ', rnn_0_i_state.squeeze())
