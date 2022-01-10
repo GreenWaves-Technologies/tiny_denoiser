@@ -9,7 +9,16 @@ show
 
 run_pyscript model/nntool_scripts/collect_stats.py samples/quant/ 8 $(GRU) $(MODEL_BUILD)/
 #run_pyscript model/nntool_scripts/apply_quant.py samples/quant/ 8 $(GRU) $(MODEL_BUILD)/
+
+# NE16 A16-W8
 aquant --stats $(MODEL_BUILD)/data_quant.json --force_external_size 16 --force_input_size 16 --force_output_size 16 --use_ne16
+
+# NE16 A8-W8
+#aquant --stats $(MODEL_BUILD)/data_quant.json --force_external_size 8 --force_input_size 8 --force_output_size 8 --use_ne16
+
+# NE16 A16-A8GRU-W8
+#aquant --stats $(MODEL_BUILD)/data_quant.json --force_external_size 16 --force_input_size 16 --force_output_size 16 --use_ne16
+#qtune --step GRU_74,GRU_136 force_external_size=8
 
 adjust
 fusions --scale8

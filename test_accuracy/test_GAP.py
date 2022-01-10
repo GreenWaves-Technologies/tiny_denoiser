@@ -67,7 +67,8 @@ def denoise_sample_on_gap_gvsoc(input_file, output_file, samplerate, padding = F
     return 0
 
 def test_on_gap(    dataset_path, output_file, samplerate, padding, 
-                    suffix_cleanfile, gru, quant_bfp16, quant_int8, quant_ne16, nntool, approx  ):
+                    suffix_cleanfile, gru, quant_bfp16, quant_int8, 
+                    quant_ne16, ne_16_type, nntool, approx  ):
     
     # set noisy and clean path
     noisy_path = dataset_path + '/noisy/'
@@ -139,9 +140,11 @@ def test_on_gap(    dataset_path, output_file, samplerate, padding,
                 Opts['force_input_size'] = 8
                 Opts['force_output_size'] = 8
 
-#            Opts['force_external_size'] = 8
-#            Opts['force_input_size'] = 8
-#            Opts['force_output_size'] = 8
+            if ne_16_type == 'a8w8':
+                Opts['force_external_size'] = 8
+                Opts['force_input_size'] = 8
+                Opts['force_output_size'] = 8
+
 
             quantizer = NewQuantizer(G, reset_all=True)
             quantizer.options = Opts
@@ -152,7 +155,10 @@ def test_on_gap(    dataset_path, output_file, samplerate, padding,
             
             if quant_ne16: # adjust after NE16 = True
                 NNToolShell.run_commands_on_graph(G, ['adjust', 'fusions --scale8'])
-            NNToolShell.run_commands_on_graph(G, ['qtune --step GRU_74,GRU_136 force_external_size=8'])
+            
+            if ne_16_type == 'a16arnn8w8':
+                NNToolShell.run_commands_on_graph(G, 
+                    ['qtune --step GRU_74, GRU_136 force_external_size=8'])
 
 
             NNToolShell.run_commands_on_graph(G, [ 'qshow'])
@@ -363,10 +369,8 @@ if __name__ == "__main__":
                             help="Set GRU in case of a GRU model")
     parser.add_argument("--quant", type=str, default="fp16",
                         help="fp16 | bfp16 | int8 | ne16")
-#    parser.add_argument('--bfp16', action="store_true",
-#                            help="Set quantization to BFP16")
-#    parser.add_argument('--int8', action="store_true",
-#                            help="Set quantization to 8 bit ") 
+    parser.add_argument('--ne_16_type', type=str, default="a16w8",
+                        help="a16w8 | a8w8 | a16arnn8w8")
     parser.add_argument('--nntool', action="store_true",
                             help="Run inference on nntool. if False, run inference on GVSOC")
     parser.add_argument("--approx", type=str, default='',
@@ -376,12 +380,20 @@ if __name__ == "__main__":
 
     # parse the quantization method
     bfp16 = int8 = ne16 = False
+    ne_16_type = False
     if args.quant == 'bfp16':
         bfp16 = True
     elif args.quant == 'int8':
         int8 = True
     elif args.quant == 'ne16':
         ne16 = True
+        ne_16_type = 'a16w8'
+        if args.ne_16_type == 'a16w8':  
+            ne_16_type = 'a16w8'
+        elif args.ne_16_type == 'a8w8':
+            ne_16_type = 'a8w8'
+        elif args.ne_16_type == 'a16arnn8w8':
+            ne_16_type = 'a16arnn8w8'
 
     # call the test
     if args.mode == 'sample':
@@ -389,7 +401,7 @@ if __name__ == "__main__":
         denoise_sample_on_gap_gvsoc(args.wav_input, args.wav_output, args.sample_rate, args.pad_input)
     elif args.mode == 'test':
         test_on_gap(args.dataset_path, args.wav_output, args.sample_rate, args.pad_input, 
-            args.suffix_clean, args.gru, bfp16, int8, ne16, args.nntool, args.approx)
+            args.suffix_clean, args.gru, bfp16, int8, ne16, ne_16_type, args.nntool, args.approx)
     else:
         print("Selected --mode is not supported!")
         exit(1)
