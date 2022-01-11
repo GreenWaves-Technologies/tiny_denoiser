@@ -34,7 +34,6 @@ if gru == 1:
 else:
 	print('This is a LSTM-based model')
 
-print('Quantization samples from: ', quant_sample_path, 'quantized to ', quantization_bits, ' bits')
 
 
 quantization_file = path_model_build + "data_quant.json"
@@ -42,7 +41,8 @@ if os.path.isfile(quantization_file):
 	print("Quantization file is already here!")
 	exit()
 
-print("Going to collect the quantization stats")
+print("Going to collect the quantization stats and store into: " + quantization_file)
+print('The calibration samples are taken from: ', quant_sample_path)
 
 # parameters
 SR = 16000
@@ -86,19 +86,18 @@ for filename in os.listdir(quant_sample_path):
 		else:
 			data = [single_mags, lstm_0_i_state, lstm_0_c_state, lstm_1_i_state, lstm_1_c_state]
 
-
 		stats_collector.collect_stats(G, data)
 		outputs = executer.execute(data, qmode=None, silent=True)
 		
 		if gru == 1:
-			lstm_0_i_state = outputs[31][0]
-			lstm_1_i_state = outputs[34][0]
+			lstm_0_i_state = outputs[G['GRU_74'].step_idx][0]
+			lstm_1_i_state = outputs[G['GRU_136'].step_idx][0]
 		else:
-			lstm_0_i_state = outputs[36][0]
-			lstm_0_c_state = outputs[38][0]
-			lstm_1_i_state = outputs[41][0]
-			lstm_1_c_state = outputs[47][0]
-
+			lstm_0_i_state = outputs[G['LSTM_78'].step_idx][0]
+			lstm_0_c_state = outputs[G['output_2'].step_idx][0]
+			lstm_1_i_state = outputs[G['LSTM_144'].step_idx][0]
+			lstm_1_c_state = outputs[G['output_3'].step_idx][0]
+		
 		print(lstm_0_i_state.shape)
 
 
@@ -120,7 +119,6 @@ for filename in os.listdir(quant_sample_path):
 		lim_2 = max_stats if max_stats > lim_2 else lim_2   
 		print('rnn_1_i_state | Sample: ',i,', Max: ', max_stats, 'Glob Max', lim_2)
 	
-	break			
 
 # get quantization stas and dump to file
 astats = stats_collector.stats
