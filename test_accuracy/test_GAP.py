@@ -67,7 +67,7 @@ def denoise_sample_on_gap_gvsoc(input_file, output_file, samplerate, padding = F
     return 0
 
 def test_on_gap(    dataset_path, output_file, samplerate, padding, 
-                    suffix_cleanfile, gru, quant_bfp16, quant_int8, 
+                    suffix_cleanfile, gru, real, quant_fp16,  quant_bfp16, quant_int8, 
                     quant_ne16, ne_16_type, nntool, approx  ):
     
     # set noisy and clean path
@@ -100,21 +100,27 @@ def test_on_gap(    dataset_path, output_file, samplerate, padding,
         G = NNToolShell.get_graph_from_commands([
             'open ' + model_name + ' --use_lut_sigmoid --use_lut_tanh',
             'adjust',
-            'fusions --scale8',
-            'nodeoption GRU_74 RNN_STATES_AS_INPUTS 1',
-            'nodeoption GRU_136 RNN_STATES_AS_INPUTS 1',
+            'fusions --scale8', ])
 
-        ])
+        if gru:
+            NNToolShell.run_commands_on_graph(G, [
+                'nodeoption GRU_74 RNN_STATES_AS_INPUTS 1',
+                'nodeoption GRU_136 RNN_STATES_AS_INPUTS 1',
+            ])
+        else:
+            NNToolShell.run_commands_on_graph(G, [
+                'nodeoption LSTM_78 RNN_STATES_AS_INPUTS 1',
+                'nodeoption LSTM_78 LSTM_OUTPUT_C_STATE 1',
+                'nodeoption LSTM_144 RNN_STATES_AS_INPUTS 1',
+                'nodeoption LSTM_144 LSTM_OUTPUT_C_STATE 1',
+            ])    
 
         if quant_ne16 or quant_int8:
 
-            # quantized inference
-            nntool_quantizer = True
-
             # change this with other script...
             import pickle
-            fp = open('model/data_quant_gru.json', 'rb')
-#            fp = open('BUILD_MODEL_8BIT/data_quant.json', 'rb')
+#            fp = open('model/data_quant_gru.json', 'rb')
+            fp = open('BUILD_MODEL_8BIT/data_quant.json', 'rb')
             astats = pickle.load(fp)
             fp.close()
             
@@ -157,15 +163,18 @@ def test_on_gap(    dataset_path, output_file, samplerate, padding,
                 NNToolShell.run_commands_on_graph(G, ['adjust', 'fusions --scale8'])
             
             if ne_16_type == 'a16arnn8w8':
-                NNToolShell.run_commands_on_graph(G, 
-                    ['qtune --step GRU_74, GRU_136 force_external_size=8'])
-
+                if gru:
+                    NNToolShell.run_commands_on_graph(G, 
+                        ['qtune --step GRU_74,GRU_136 force_external_size=8'])
+                else:
+                    NNToolShell.run_commands_on_graph(G, 
+                        ['qtune --step LSTM_78,LSTM_144 force_external_size=8'])
 
             NNToolShell.run_commands_on_graph(G, [ 'qshow'])
             print("The graph is QUANTIZED")
 
 
-        else: # fp16
+        elif quant_fp16: # fp16
             NNToolShell.run_commands_on_graph(G, [ 
                 'fquant',
                 'qtune --step * scheme=float float_type=float16', 
@@ -174,8 +183,10 @@ def test_on_gap(    dataset_path, output_file, samplerate, padding,
 
 
         # define the executed
-        executer = GraphExecuter(G, qrecs=G.quantization)
-
+        if not real: 
+            executer = GraphExecuter(G, qrecs=G.quantization)
+        else:
+            executer = GraphExecuter(G, qrecs=None)
 
     for i, file in enumerate(filenames):
 
@@ -217,26 +228,42 @@ def test_on_gap(    dataset_path, output_file, samplerate, padding,
                 stft_frame_o_T = np.empty_like(stft_frame_i_T)
 
                 rnn_0_i_state = np.zeros(256)
-                #rnn_0_c_state = np.zeros(256)
                 rnn_1_i_state = np.zeros(256)
-                #rnn_1_c_state = np.zeros(256)
+
+                if gru == 0:
+                    rnn_0_c_state = np.zeros(256)
+                    rnn_1_c_state = np.zeros(256)
                 
 
                 for i in range (num_win):
-                    print('*****Frame ' + str(i) + ' ******')
+#                    print('*****Frame ' + str(i) + ' ******')
                     stft_clip = stft_frame_i_T[i]
                     stft_clip_mag = np.abs(stft_clip)
 #                    print(stft_clip_mag)
-                    #stft_clip_mag_estimate = np.random.rand(fft_feat)
-                    data = [stft_clip_mag, rnn_0_i_state, rnn_1_i_state]
+
+                    if gru == 1:
+                        data = [stft_clip_mag, rnn_0_i_state, rnn_1_i_state]
+                    else:
+                        data = [stft_clip_mag, rnn_0_i_state, rnn_0_c_state, rnn_1_i_state, rnn_1_c_state]
+                    
                     outputs = executer.execute(data, 
-                        qmode=QuantizationMode.all_dequantize() if nntool_quantizer else None, 
+                        qmode=QuantizationMode.all_dequantize() if not real else None, 
                         silent=True)
                     
-                    conv_0_out = outputs[G['Conv_0'].step_idx][0]
-                    rnn_0_i_state = outputs[G['GRU_74'].step_idx][0]
-                    rnn_1_i_state = outputs[G['GRU_136'].step_idx][0]
+
                     mag_out = outputs[G['output_1'].step_idx][0]
+
+                    if gru == 1:
+                        rnn_0_i_state = outputs[G['GRU_74'].step_idx][0]
+                        rnn_1_i_state = outputs[G['GRU_136'].step_idx][0]
+                    else:
+                        rnn_0_i_state = outputs[G['LSTM_78'].step_idx][0]
+                        rnn_0_c_state = outputs[G['output_2'].step_idx][0]
+                        rnn_1_i_state = outputs[G['LSTM_144'].step_idx][0]
+                        rnn_1_c_state = outputs[G['output_3'].step_idx][0]
+
+
+
 
 #                    print('conv_0_out= ', conv_0_out.squeeze())
 #                    print('rnn_0_i_state= ', rnn_0_i_state.squeeze())
@@ -368,7 +395,7 @@ if __name__ == "__main__":
     parser.add_argument('--gru', action="store_true",
                             help="Set GRU in case of a GRU model")
     parser.add_argument("--quant", type=str, default="fp16",
-                        help="fp16 | bfp16 | int8 | ne16")
+                        help="fp16 | bfp16 | int8 | ne16 | real")
     parser.add_argument('--ne_16_type', type=str, default="a16w8",
                         help="a16w8 | a8w8 | a16arnn8w8")
     parser.add_argument('--nntool', action="store_true",
@@ -379,9 +406,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # parse the quantization method
-    bfp16 = int8 = ne16 = False
+    real = fp16 = bfp16 = int8 = ne16 = False
     ne_16_type = False
-    if args.quant == 'bfp16':
+    if args.quant == 'real':
+        real = True
+    elif args.quant == 'fp16':
+        fp16 = True
+    elif args.quant == 'bfp16':
         bfp16 = True
     elif args.quant == 'int8':
         int8 = True
@@ -401,7 +432,7 @@ if __name__ == "__main__":
         denoise_sample_on_gap_gvsoc(args.wav_input, args.wav_output, args.sample_rate, args.pad_input)
     elif args.mode == 'test':
         test_on_gap(args.dataset_path, args.wav_output, args.sample_rate, args.pad_input, 
-            args.suffix_clean, args.gru, bfp16, int8, ne16, ne_16_type, args.nntool, args.approx)
+            args.suffix_clean, args.gru, real, fp16, bfp16, int8, ne16, ne_16_type, args.nntool, args.approx)
     else:
         print("Selected --mode is not supported!")
         exit(1)
