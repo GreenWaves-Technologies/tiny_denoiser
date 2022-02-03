@@ -176,15 +176,16 @@ APP_SRCS += denoiser.c $(MODEL_GEN_C) $(MODEL_COMMON_SRCS) $(CNN_LIB)
 APP_SRCS += $(GAP_LIB_PATH)/wav_io/wavIO.c
 #APP_SRCS += BUILD_MODEL_STFT/MFCCKernels.c  
 APP_SRCS += BUILD_MODEL_STFT/RFFTKernels.c  
-APP_SRCS += $(MFCC_KER_SRCS)
-APP_SRCS += $(TILER_DSP_KERNEL_PATH)/LUT_Tables/TwiddlesDef.c 
-APP_SRCS += $(TILER_DSP_KERNEL_PATH)/LUT_Tables/RFFTTwiddlesDef.c 
-APP_SRCS += $(TILER_DSP_KERNEL_PATH)/LUT_Tables/SwapTablesDef.c
-APP_SRCS += $(TILER_DSP_KERNEL_PATH)/MfccBasicKernels.c 
-APP_SRCS += $(TILER_DSP_KERNEL_PATH)/FFT_Library.c 
+#APP_SRCS += $(MFCC_KER_SRCS)
+#APP_SRCS += $(TILER_DSP_KERNEL_PATH)/LUT_Tables/TwiddlesDef.c 
+#APP_SRCS += $(TILER_DSP_KERNEL_PATH)/LUT_Tables/RFFTTwiddlesDef.c 
+#APP_SRCS += $(TILER_DSP_KERNEL_PATH)/LUT_Tables/SwapTablesDef.c
+
+#APP_SRCS += $(TILER_DSP_KERNEL_PATH)/MfccBasicKernels.c 
+#APP_SRCS += $(TILER_DSP_KERNEL_PATH)/FFT_Library.c 
 #APP_SRCS += $(TILER_DSP_KERNEL_PATH)/math_funcs.c
-APP_SRCS += $(TILER_DSP_KERNEL_PATH)/CmplxFunctions.c 
-APP_SRCS += $(TILER_DSP_KERNEL_PATH)/PreProcessing.c 
+#APP_SRCS += $(TILER_DSP_KERNEL_PATH)/CmplxFunctions.c 
+#APP_SRCS += $(TILER_DSP_KERNEL_PATH)/PreProcessing.c 
 
 #include paths
 APP_CFLAGS += -Icommon -I$(GAP_SDK_HOME)/libs/gap_lib/include/gaplib/

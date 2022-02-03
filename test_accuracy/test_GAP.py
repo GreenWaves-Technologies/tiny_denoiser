@@ -59,7 +59,7 @@ def denoise_sample_on_gap_gvsoc(input_file, output_file, samplerate, padding = F
     sf.write(file_name, data, samplerate)
     run_on_gap_gvsoc(file_name, output_file, compile=compile_GAP, 
                     gru=gru, quant_bfp16=quant_bfp16, quant_int8=quant_int8, approx=approx)
-    shutil.copyfile('BUILD/GAP9_V2/GCC_RISCV_PULPOS/test_gap.wav', output_file)
+    shutil.copyfile('BUILD/GAP9_V2/GCC_RISCV_FREERTOS/test_gap.wav', output_file)
     if not os.path.isfile(output_file):
         print("Error! not any output fiule produced")
         exit(0)
@@ -307,7 +307,7 @@ def test_on_gap(    dataset_path, output_file, samplerate, padding,
 
                 denoise_sample_on_gap_gvsoc(
                     input_file, output_file, samplerate, 
-                    padding = padding, compile=compile_GAP, 
+                    padding = padding, compile_GAP=compile_GAP, 
                     gru=gru, quant_bfp16=quant_bfp16, 
                     quant_int8=quant_int8, approx=approx
                 )

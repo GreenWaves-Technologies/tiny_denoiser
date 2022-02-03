@@ -76,13 +76,10 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 
 #if IS_INPUT_STFT == 0 
     //load the input audio signal and compute the STFT
-    #include "TwiddlesDef.h"
-    #include "RFFTTwiddlesDef.h"
-    #include "SwapTablesDef.h"
-    #include "WinLUT.def"
-    #include "WinLUT_f32.def"
     #ifdef __gap9__
         #include "WinLUT_f16.def"
+    #else
+
     #endif
 
     // defines for audio IOs
@@ -167,10 +164,10 @@ PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_1_C[RNN_STATE_DIM_1];
         STFT(
             Audio_Frame, 
             STFT_Spectrogram, 
-            R4_Twiddles_f16_256,   
-            RFFT_Twiddles_f16_512,   
-            R4_SwapTable_fix_256, 
-            WinLUT_f16
+            TwiddlesLUT_f16,
+            RFFTTwiddlesLUT_f16,
+            SwapTable_f16,
+            WindowLUT_f16
         );
 
         unsigned int ti = gap_cl_readhwtimer() - ta;
@@ -231,9 +228,9 @@ PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_1_C[RNN_STATE_DIM_1];
         iSTFT(
             STFT_Spectrogram, 
             STFT_Spectrogram, 
-            R4_Twiddles_f16_256,   
-            RFFT_Twiddles_f16_512,   
-            R4_SwapTable_fix_256
+            TwiddlesLUT_f16,   
+            RFFTTwiddlesLUT_f16,   
+            SwapTable_f16
         );
         ti = gap_cl_readhwtimer() - ta;
         PRINTF("%45s: Cycles: %10d\n","iSTFT: ", ti );
@@ -411,32 +408,31 @@ void denoiser(void)
     /******
         Setup STFT/ISTF task
     ******/
-    struct pi_cluster_task *task_stft = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
-    if (!task_stft) {
+    struct pi_cluster_task task_stft;
+    pi_cluster_task(&task_stft,NULL,NULL);
+    if (&task_stft == NULL) {
         PRINTF("failed to allocate memory for task\n");
     }
-
-    memset(task_stft, 0, sizeof(struct pi_cluster_task));
-    task_stft->stack_size = STACK_SIZE;
-    task_stft->slave_stack_size = SLAVE_STACK_SIZE;
-    task_stft->arg = NULL;
+    task_stft.stack_size = STACK_SIZE;
+    task_stft.slave_stack_size = SLAVE_STACK_SIZE;
+    task_stft.arg = NULL;
 
 #ifndef NN_INF_NOT
     /******
         Setup Denoiser NN inference task (if enabled)
     ******/
     printf("Setup Cluster Task for inference!\n");
-    struct pi_cluster_task *task_net = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
-    if(task_net==NULL) {
+    struct pi_cluster_task task_net;
+    pi_cluster_task(&task_net,NULL,NULL);
+    if(&task_net==NULL) {
       PRINTF("pi_cluster_task alloc Error!\n");
       pmsis_exit(-1);
     }
     PRINTF("Stack size is %d and %d\n",STACK_SIZE,SLAVE_STACK_SIZE );
-    memset(task_net, 0, sizeof(struct pi_cluster_task));
-    task_net->entry = &RunDenoiser;
-    task_net->stack_size = STACK_SIZE;
-    task_net->slave_stack_size = SLAVE_STACK_SIZE;
-    task_net->arg = NULL;
+    task_net.entry = &RunDenoiser;
+    task_net.stack_size = STACK_SIZE;
+    task_net.slave_stack_size = SLAVE_STACK_SIZE;
+    task_net.arg = NULL;
     
     // Reset LSTM
     ResetLSTM = 1;
@@ -561,7 +557,7 @@ void denoiser(void)
         ******/
         // compute mfcc if not read from file
         PRINTF("\n\n****** Computing STFT ***** \n");
-        task_stft->entry = &RunSTFT;
+        task_stft.entry = &RunSTFT;
 
         L1_Memory = pmsis_l1_malloc(_L1_Memory_SIZE);
         if (L1_Memory==NULL){
@@ -569,7 +565,7 @@ void denoiser(void)
             pmsis_exit(-1);
         }
 
-        pi_cluster_send_task_to_cl(&cluster_dev, task_stft);
+        pi_cluster_send_task_to_cl(&cluster_dev, &task_stft);
         pmsis_l1_malloc_free(L1_Memory,_L1_Memory_SIZE);
 
         /***
@@ -658,7 +654,7 @@ void denoiser(void)
         PRINTF("\n\n****** Denoiser ***** \n");
 
         PRINTF("Send task to cluster\n");
-   	    pi_cluster_send_task_to_cl(&cluster_dev, task_net);
+   	    pi_cluster_send_task_to_cl(&cluster_dev, &task_net);
 
         PRINTF("\n Denoiser Output\n");
         for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
@@ -709,14 +705,14 @@ void denoiser(void)
     ******/
     PRINTF("\n\n****** Computing iSTFT ***** \n");
 
-    task_stft->entry = &RuniSTFT;
+    task_stft.entry = &RuniSTFT;
     L1_Memory = pmsis_l1_malloc(_L1_Memory_SIZE);
     if (L1_Memory==NULL){
         printf("Error allocating L1\n");
         pmsis_exit(-1);
     }
 
-    pi_cluster_send_task_to_cl(&cluster_dev, task_stft);
+    pi_cluster_send_task_to_cl(&cluster_dev, &task_stft);
 
     pmsis_l1_malloc_free(L1_Memory,_L1_Memory_SIZE);
 

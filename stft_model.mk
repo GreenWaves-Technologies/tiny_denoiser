@@ -29,17 +29,17 @@ ifdef MODEL_L3_MEMORY
   MODEL_GEN_EXTRA_FLAGS += --L3 $(MODEL_L3_MEMORY)
 endif
 
+
 $(FFT_BUILD_DIR):
 	mkdir $(FFT_BUILD_DIR)
-
+	
 $(WIN_LUT_Q16): $(FFT_BUILD_DIR)
-	python $(TILER_WIN_GEN_LUT_SCRIPT) --win_lut_file $(WIN_LUT_Q16) --win_func "hanning" --dtype "int" --frame_size 400
-
+	python $(TILER_MFCC_GEN_LUT_SCRIPT) --fft_lut_file $(WIN_LUT_Q16) --name_suffix "_Fix" --win_func "hanning" --dtype "int" --frame_size 400 --n_fft 512
 $(WIN_LUT_F32): $(FFT_BUILD_DIR)
-	python $(TILER_WIN_GEN_LUT_SCRIPT) --win_lut_file $(WIN_LUT_F32) --win_func "hanning" --dtype "float32" --frame_size 400
-
+	python $(TILER_MFCC_GEN_LUT_SCRIPT) --fft_lut_file $(WIN_LUT_F32) --name_suffix "_f32" --win_func "hanning" --dtype "float32" --frame_size 400 --n_fft 512
 $(WIN_LUT_F16): $(FFT_BUILD_DIR)
-	python $(TILER_WIN_GEN_LUT_SCRIPT) --win_lut_file $(WIN_LUT_F16) --win_func "hanning" --dtype "float16" --frame_size 400
+	python $(TILER_MFCC_GEN_LUT_SCRIPT) --fft_lut_file $(WIN_LUT_F16) --name_suffix "_f16" --win_func "hanning" --dtype "float16" --frame_size 400 --n_fft 512
+	
 
 # Build the code generator from the model code
 $(FFT_MODEL_GEN): $(FFT_BUILD_DIR)
