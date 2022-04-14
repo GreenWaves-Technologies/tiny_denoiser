@@ -10,29 +10,12 @@ import shutil
 from pesq import pesq
 from pystoi import stoi
 
-# nntool
-sys.path.insert(0, os.environ['NNTOOL_DIR'])
-from execution.graph_executer import GraphExecuter
-from execution.quantization_mode import QuantizationMode
-from interpreter.nntool_shell import NNToolShell
-from quantization.quantizer.new_quantizer import NewQuantizer
-
 def run_on_gap_gvsoc(input_file, output_file, compile=True, gru=False, 
                 quant_bfp16=False,  quant_int8=False, approx='' ):
     runner_args = "" 
     runner_args += " GRU=1" if gru else "" 
     runner_args += " WAV_FILE="+input_file
     runner_args += " QUANT_BITS=BFP16" if quant_bfp16 else " QUANT_BITS=8" if quant_int8 else ""
-
-#    if approxRNN == 'LUT':
-#        runner_args += " ACCURATE_MATH_RNN=2"
-#    elif approxRNN == 'float':
-#        runner_args += " ACCURATE_MATH_RNN=1"
-#
-#    if approxSigm == 'LUT':
-#        runner_args += " ACCURATE_MATH_SIG=2"
-#    elif approxSigm == 'float':
-#        runner_args += " ACCURATE_MATH_SIG=1"
 
     if approx == 'LUT':
         runner_args += " APPROX_LUT=1"
@@ -66,9 +49,128 @@ def denoise_sample_on_gap_gvsoc(input_file, output_file, samplerate, padding = F
     print("Clean audio file stored in: ", output_file)
     return 0
 
+def nntool_get_model(model_onnx, gru, real, quant_fp16,  quant_bfp16, quant_int8, 
+                    quant_ne16, ne_16_type, quant_stats_file=None):
+    # nntool
+    sys.path.insert(0, os.environ['NNTOOL_DIR'])
+    from nntool.api import NNGraph
+
+    model = NNGraph.load_graph(
+        model_onnx,
+        load_quantization=False, # Whether tflite quant should be loaded or not (default: False)
+        use_hard_sigmoid=False,
+        use_hard_tanh=False
+    )
+    
+    model.adjust_order()
+    model.fusions('scaled_match_group')
+    
+    if gru:
+        model["GRU_74"].set_states_as_inputs(model)
+        model["GRU_136"].set_states_as_inputs(model)
+    else:
+        model["LSTM_78"].set_states_as_inputs(model)
+        model["LSTM_78"].set_c_state_as_output(model)
+        model["LSTM_144"].set_states_as_inputs(model)
+        model["LSTM_144"].set_c_state_as_output(model)
+        
+    if quant_ne16 or quant_int8:
+
+        # change this with other script...
+        import pickle
+    #            fp = open('model/data_quant_gru.json', 'rb')
+        fp = open('BUILD_MODEL_8BIT/data_quant.json', 'rb')
+        astats = pickle.load(fp)
+        fp.close()
+
+        Opts = { 'float_type': 'float32', 'kernel_type': 'fastfloat', 'hwc': False, 
+                 'sq_bits': 8,    
+                 'weight_bits': 8, 
+                 'force_external_size': 16, # 8
+                 'narrow_weights': True, 
+                 'use_ne16': True, # False
+                 'narrow_state': True, 
+                 'quantized_dimension': 'channel', 
+                 'force_ne16': False, 
+                 'allow_asymmetric': False, 
+                 'force_input_size': 16, # 8 
+                 'force_output_size': 16, #8 
+                 'softmax_out_8bits': False, 
+                 'bits': 16, 
+                 'pow2_biases': 0 
+                }
+        if quant_int8: 
+            Opts['force_external_size'] = 8
+            Opts['use_ne16'] = False
+            Opts['force_input_size'] = 8
+            Opts['force_output_size'] = 8
+
+        if ne_16_type == 'a8w8':
+            Opts['force_external_size'] = 8
+            Opts['force_input_size'] = 8
+            Opts['force_output_size'] = 8
+
+
+        quantizer = NewQuantizer(G, reset_all=True)
+        quantizer.options = Opts
+        quantizer.schemes.append('SQ8')
+        quantizer.set_stats(astats)
+        quantizer.quantize()
+        G.add_dimensions()
+
+        if quant_ne16: # adjust after NE16 = True
+            NNToolShell.run_commands_on_graph(G, ['adjust', 'fusions --scale8'])
+
+        if ne_16_type == 'a16arnn8w8':
+            if gru:
+                NNToolShell.run_commands_on_graph(G, 
+                    ['qtune --step GRU_74,GRU_136 force_external_size=8'])
+            else:
+                NNToolShell.run_commands_on_graph(G, 
+                    ['qtune --step LSTM_78,LSTM_144 force_external_size=8'])
+
+        NNToolShell.run_commands_on_graph(G, [ 'qshow'])
+        print("The graph is QUANTIZED")
+
+
+    elif quant_fp16: # fp16
+        graph_options = {
+            "scheme": 'float',
+            "float_type" : 'float16'
+        }
+        #NNToolShell.run_commands_on_graph(G, [ 
+        #    'fquant',
+        #    'qtune --step * scheme=float float_type=float16', 
+        #    'qshow'])
+        
+    print(model.show())
+    if not real:
+        model.quantize(
+            quant_stats_file,
+            schemes=['float'], # Schemes present in the graph
+            graph_options = graph_options,
+    #        graph_options={
+    #            "use_ne16": True,
+    #            "hwc": False,
+    #            "force_output_size": 16,
+    #        }, # QUANT_OPTIONS applied graph-wise
+    #        node_options={
+    #            name_layer_2: {
+    #                "use_ne16": False,
+    #                "hwc": True
+    #            }
+    #        }, # QUANT_OPTIONS applied layer-wise
+        )
+        
+        print(model.qshow())
+
+    return model
+
+
+
 def test_on_gap(    dataset_path, output_file, samplerate, padding, 
                     suffix_cleanfile, gru, real, quant_fp16,  quant_bfp16, quant_int8, 
-                    quant_ne16, ne_16_type, nntool, approx  ):
+                    quant_ne16, ne_16_type, nntool_model, approx  ):
     
     # set noisy and clean path
     noisy_path = dataset_path + '/noisy/'
@@ -95,7 +197,8 @@ def test_on_gap(    dataset_path, output_file, samplerate, padding,
     compile_GAP = True
 
     # prepare nntool graph
-    if nntool:
+#    if nntool_model:
+    if False:
         model_name = 'model/denoiser_GRU.onnx' if gru else 'model/denoiser.onnx'
         G = NNToolShell.get_graph_from_commands([
             'open ' + model_name + ' --use_lut_sigmoid --use_lut_tanh',
@@ -187,7 +290,7 @@ def test_on_gap(    dataset_path, output_file, samplerate, padding,
             executer = GraphExecuter(G, qrecs=G.quantization)
         else:
             executer = GraphExecuter(G, qrecs=None)
-
+    
     for i, file in enumerate(filenames):
 
         # check first if the clean signal has been already produced
@@ -196,7 +299,7 @@ def test_on_gap(    dataset_path, output_file, samplerate, padding,
             estimate, s = librosa.load(estimate_filepath, sr=samplerate)
         else: # compute the estimate
         
-            if nntool:
+            if nntool_model is not False:
                 # Get data
                 if os.path.isfile(output_file):
                     os.remove(output_file)
@@ -244,23 +347,25 @@ def test_on_gap(    dataset_path, output_file, samplerate, padding,
                     if gru == 1:
                         data = [stft_clip_mag, rnn_0_i_state, rnn_1_i_state]
                     else:
-                        data = [stft_clip_mag, rnn_0_i_state, rnn_0_c_state, rnn_1_i_state, rnn_1_c_state]
+                        #data = [stft_clip_mag, rnn_0_i_state, rnn_0_c_state, rnn_1_i_state, rnn_1_c_state]
+                        data = [rnn_1_c_state, rnn_0_c_state, rnn_1_i_state, rnn_0_i_state, stft_clip_mag]
                     
-                    outputs = executer.execute(data, 
-                        qmode=QuantizationMode.all_dequantize() if not real else None, 
-                        silent=True)
-                    
+                    #outputs = executer.execute(data, 
+                    #    qmode=QuantizationMode.all_dequantize() if not real else None, 
+                    #    silent=True)
 
-                    mag_out = outputs[G['output_1'].step_idx][0]
+                    outputs = nntool_model.execute(data, quantize=not real)
+
+                    mag_out = outputs[nntool_model['output_1'].step_idx][0]
 
                     if gru == 1:
-                        rnn_0_i_state = outputs[G['GRU_74'].step_idx][0]
-                        rnn_1_i_state = outputs[G['GRU_136'].step_idx][0]
+                        rnn_0_i_state = outputs[nntool_model['GRU_74'].step_idx][0]
+                        rnn_1_i_state = outputs[nntool_model['GRU_136'].step_idx][0]
                     else:
-                        rnn_0_i_state = outputs[G['LSTM_78'].step_idx][0]
-                        rnn_0_c_state = outputs[G['output_2'].step_idx][0]
-                        rnn_1_i_state = outputs[G['LSTM_144'].step_idx][0]
-                        rnn_1_c_state = outputs[G['output_3'].step_idx][0]
+                        rnn_0_i_state = outputs[nntool_model['LSTM_78'].step_idx][0]
+                        rnn_0_c_state = outputs[nntool_model['output_2'].step_idx][0]
+                        rnn_1_i_state = outputs[nntool_model['LSTM_144'].step_idx][0]
+                        rnn_1_c_state = outputs[nntool_model['output_3'].step_idx][0]
 
 
 
@@ -402,6 +507,12 @@ if __name__ == "__main__":
                             help="Run inference on nntool. if False, run inference on GVSOC")
     parser.add_argument("--approx", type=str, default='',
                         help="Empty | LUT")
+    
+    parser.add_argument("--model_onnx", type=str, default="model/denoiser.onnx",
+                        help="Path to the onnx model")
+    parser.add_argument("--quant_stats_file ", type=str, default="BUILD_MODEL_8BIT/data_quant.json",
+                        help="Path to the quant stats file")
+    
 
     args = parser.parse_args()
 
@@ -425,14 +536,21 @@ if __name__ == "__main__":
             ne_16_type = 'a8w8'
         elif args.ne_16_type == 'a16arnn8w8':
             ne_16_type = 'a16arnn8w8'
-
+    
+    # prepare nntool executer if needed
+    if args.nntool:
+        print('Going to setup the nntool executer form model {}'.format(args.model_onnx) )
+        nntool_model = nntool_get_model(args.model_onnx, args.gru, real, fp16, bfp16, int8, ne16, ne_16_type )
+    else:
+        nntool_model = False
+    
     # call the test
     if args.mode == 'sample':
         print(args.pad_input)
         denoise_sample_on_gap_gvsoc(args.wav_input, args.wav_output, args.sample_rate, args.pad_input)
     elif args.mode == 'test':
         test_on_gap(args.dataset_path, args.wav_output, args.sample_rate, args.pad_input, 
-            args.suffix_clean, args.gru, real, fp16, bfp16, int8, ne16, ne_16_type, args.nntool, args.approx)
+            args.suffix_clean, args.gru, real, fp16, bfp16, int8, ne16, ne_16_type, nntool_model, args.approx)
     else:
         print("Selected --mode is not supported!")
         exit(1)
