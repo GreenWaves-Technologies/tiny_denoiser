@@ -21,7 +21,7 @@
 #endif
 
 // FS and Audio utils
-#include "wavIO.h"
+#include "wavIO.h" 
 #include "fs_switch.h"
 
 
@@ -75,6 +75,7 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 //#define CHECKSUM
 
 #if IS_INPUT_STFT == 0 
+
     //load the input audio signal and compute the STFT
     #ifdef __gap9__
         #include "WinLUT_f16.def"
@@ -83,44 +84,38 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
     #endif
 
     // defines for audio IOs
-    #if IS_FAKE_SIGNAL_IN == 1
-        #define TOT_FRAMES 1
-    #else 
-        // allocate space to load the input signal
-        #define AUDIO_BUFFER_SIZE (MAX_L2_BUFFER) // as big as the L2 autotiler
-        char *WavName = NULL;
 
-        // L3 arrays to store input and output audio 
-        static uint32_t inSig;
-        static uint32_t outSig;
+    // allocate space to load the input signal
+    #define AUDIO_BUFFER_SIZE (MAX_L2_BUFFER) // as big as the L2 autotiler
+    char *WavName = NULL;
 
-        #ifdef CHECKSUM
-            #include "golden_sample_0000.h"
-            float error;
-            PI_L2 float STFT_Mag_Golden[] = GOLDEN_STFT_MAG;
-            PI_L2 float Denoiser_Golden[] = GOLDEN_DENOISER;
-            float snr = 0.0f;
-            float p_err = 0.0f;
-            float p_sig = 0.0f;
-        #endif
+    // L3 arrays to store input and output audio 
+    static uint32_t inSig;
+    static uint32_t outSig;
 
+    #ifdef CHECKSUM
+        #include "golden_sample_0000.h"
+        float error;
+        PI_L2 float STFT_Mag_Golden[] = GOLDEN_STFT_MAG;
+        PI_L2 float Denoiser_Golden[] = GOLDEN_DENOISER;
+        float snr = 0.0f;
+        float p_err = 0.0f;
+        float p_sig = 0.0f;
     #endif
+
 
 #else
     // here the allocation in case of stft inputs
-    #if IS_FAKE_SIGNAL_IN == 1
-        #define TOT_FRAMES 1
-    #else 
-        // allocate space to load the input signal
-        char *WavName = NULL;
-        #ifdef CHECKSUM
-            #include "golden_sample_0000.h"
-            float error;
-            PI_L2 float Denoiser_Golden[] = GOLDEN_DENOISER;
-            float snr = 0.0f;
-            float p_err = 0.0f;
-            float p_sig = 0.0f;
-        #endif
+
+    // allocate space to load the input signal
+    char *WavName = NULL;
+    #ifdef CHECKSUM
+        #include "golden_sample_0000.h"
+        float error;
+        PI_L2 float Denoiser_Golden[] = GOLDEN_DENOISER;
+        float snr = 0.0f;
+        float p_err = 0.0f;
+        float p_sig = 0.0f;
     #endif
 #endif
 
@@ -200,26 +195,6 @@ PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_1_C[RNN_STATE_DIM_1];
     #endif
         unsigned int ta, ti;
 
-    #ifdef APPLY_DENOISER
-        // if denoiser is enabled, filter the STFT spectrogram with the mask in STFT_Magnitude
-        ta = gap_cl_readhwtimer();
-            for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-                STFT_Spectrogram[2*i]    = STFT_Spectrogram[2*i]   * STFT_Magnitude[i];
-                STFT_Spectrogram[2*i+1]  = STFT_Spectrogram[2*i+1] * STFT_Magnitude[i];
-            }
-        ti = gap_cl_readhwtimer() - ta;
-
-        // debug print
-        PRINTF("\nSTFT Filtered: ");
-        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2; i++ ){
-            PRINTF("%f, ", STFT_Spectrogram[i]);
-        }
-        PRINTF("\n");
-
-        PRINTF("%45s: Cycles: %10d\n","iScaling: ", ti );
-
-    #endif // apply scaling
-
 
         // compute the iSTFT 
         //      input: STFT_Spectrogram: DATATYPE_SIGNAL
@@ -256,6 +231,7 @@ static void RunDenoiser()
   PRINTF("Running on cluster\n");
 
 #ifdef PERF
+  unsigned int ta, ti;
   gap_cl_starttimer();
   gap_cl_resethwtimer();
 #endif
@@ -264,7 +240,7 @@ static void RunDenoiser()
   pi_gpio_pin_write(&gpio, GPIO_OUT, 1 );
 #endif
 
-// debug
+// casting from preprocessing datatype to NN datatype
 DATATYPE_SIGNAL_INF * net_in_out = (DATATYPE_SIGNAL_INF * ) STFT_Magnitude;
 #if DTYPE == 2
   // scale and quantize
@@ -280,11 +256,12 @@ DATATYPE_SIGNAL_INF * net_in_out = (DATATYPE_SIGNAL_INF * ) STFT_Magnitude;
   PRINTF("\n");
 #endif
 
-    // Denoiser NN computation
-    //      input: STFT_Magnitude: DATATYPE_SIGNAL, 
-    //      output: STFT_Magnitude, DATATYPE_SIGNAL - reusing the same buffer
-    //      states: RNN_STATE_0_I, RNN_STATE_0_C, RNN_STATE_1_I, RNN_STATE_1_C, must be preserved
-    //      reset: only enabled at the start of the application
+    /* Denoiser NN computation
+          input: STFT_Magnitude: DATATYPE_SIGNAL, 
+          output: STFT_Magnitude, DATATYPE_SIGNAL - reusing the same buffer
+          states: RNN_STATE_0_I, RNN_STATE_0_C, RNN_STATE_1_I, RNN_STATE_1_C, must be preserved
+          reset: only enabled at the start of the application
+    */
   __PREFIX(CNN)(
         STFT_Magnitude,  
         RNN_STATE_0_I,
@@ -300,6 +277,7 @@ DATATYPE_SIGNAL_INF * net_in_out = (DATATYPE_SIGNAL_INF * ) STFT_Magnitude;
         STFT_Magnitude
     );
 
+  // casting from inference datatype to post-processing datatype
 #if DTYPE == 2
   // scale and dequantize the output
   PRINTF("Denoiser Output INT8:\n");
@@ -330,6 +308,32 @@ DATATYPE_SIGNAL_INF * net_in_out = (DATATYPE_SIGNAL_INF * ) STFT_Magnitude;
 //  }
 //#endif
 
+
+// apply denoising here
+#ifdef APPLY_DENOISER
+    // if denoiser is enabled, filter the STFT spectrogram with the mask in STFT_Magnitude
+    ta = gap_cl_readhwtimer();
+        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
+            STFT_Spectrogram[2*i]    = STFT_Spectrogram[2*i]   * STFT_Magnitude[i];
+            STFT_Spectrogram[2*i+1]  = STFT_Spectrogram[2*i+1] * STFT_Magnitude[i];
+        }
+    ti = gap_cl_readhwtimer() - ta;
+
+    // debug print
+    PRINTF("\nSTFT Filtered: ");
+    for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2; i++ ){
+        PRINTF("%f, ", STFT_Spectrogram[i]);
+    }
+    PRINTF("\n");
+
+    PRINTF("%45s: Cycles: %10d\n","iScaling: ", ti );
+
+#endif // apply scaling
+
+
+
+
+
 #ifdef GAPUINO
   pi_gpio_pin_write(&gpio, GPIO_OUT, 0);
 #endif
@@ -343,18 +347,14 @@ static switch_fs_t fs;
 void denoiser(void)
 {
     printf("Entering main controller\n");
-#ifdef NN_INF_NOT
-    PRINTF("NN_INF_NOT is defined\n");
-#endif
-#ifdef APPLY_DENOISER
-    PRINTF("APPLY_DENOISER is defined\n");
-#endif
+
 
     // Voltage-Frequency settings
     uint32_t voltage =1200;
     pi_freq_set(PI_FREQ_DOMAIN_FC, FREQ_FC*1000*1000);
     pi_freq_set(PI_FREQ_DOMAIN_CL, FREQ_CL*1000*1000);
-//    pi_freq_set(PI_FREQ_DOMAIN_PERIPH, 300*1000*1000);
+    pi_freq_set(PI_FREQ_DOMAIN_PERIPH, 300*1000*1000);
+
     //PMU_set_voltage(voltage, 0);
     printf("Set VDD voltage as %.2f, FC Frequency as %d MHz, CL Frequency = %d MHz\n", 
         (float)voltage/1000, FREQ_FC, FREQ_CL);
@@ -417,7 +417,7 @@ void denoiser(void)
     task_stft.slave_stack_size = SLAVE_STACK_SIZE;
     task_stft.arg = NULL;
 
-#ifndef NN_INF_NOT
+#ifndef DISABLE_NN_INFERENCE
     /******
         Setup Denoiser NN inference task (if enabled)
     ******/
@@ -443,12 +443,12 @@ void denoiser(void)
         RNN_STATE_1_I[i] = (DATATYPE_SIGNAL_INF) 0.0f;
     }
 
+
+#if IS_INPUT_STFT == 0 
     /****
         Read Audio Data from file using __PREFIX(_L2_Memory) as temporary buffer
         Data are prepared in L3 external memory
     ****/
-#if IS_INPUT_STFT == 0 
-#if IS_FAKE_SIGNAL_IN == 0
 
     // allocate L2 Memory
     __PREFIX(_L2_Memory) = pi_l2_malloc(denoiser_L2_SIZE);
@@ -496,7 +496,6 @@ void denoiser(void)
     pi_l2_free(__PREFIX(_L2_Memory),denoiser_L2_SIZE);
 
 #endif
-#endif
 
     /******
         Denoiser NN constructor
@@ -510,7 +509,7 @@ void denoiser(void)
     }
     PRINTF("Denoiser Contrcuctor OK! The L1 memory base is: %x\n",__PREFIX(_L1_Memory));
 
-#endif // NN_INF_NOT
+#endif // DISABLE_NN_INFERENCE
 
 
 #if IS_INPUT_STFT == 0 
@@ -519,13 +518,6 @@ void denoiser(void)
     Load the input audio signal and compute the MFCC
     Audio_Frame: includes only a single frame for audio
 ****/
-
-#if IS_FAKE_SIGNAL_IN == 1
-    // load fake data into Audio_Frame: a single frame of lenght FRAME_SIZE
-    for (int i=0;i<FRAME_SIZE;i++){
-        Audio_Frame[i] = 0;
-    }
-#else
 
     int tot_frames = (int) (((float)num_samples / FRAME_STEP) - NUM_FRAME_OVERLAP) ;
 //    tot_frames = 10; // debug purpose then remove
@@ -550,7 +542,6 @@ void denoiser(void)
             Audio_Frame[i] = ((DATATYPE_SIGNAL) in_temp_buffer[i] )/(1<<15);
             PRINTF("%f, ", Audio_Frame[i] );
         }
-#endif
 
         /******
             MFCC Task
@@ -602,13 +593,7 @@ void denoiser(void)
 
 #else ///load the STFT
 
-#if IS_FAKE_SIGNAL_IN == 1
-    // load fake data into STFT_Spectrogram_in
-    PRINTF("Loading a fake zeroed STFT...\n");
-    for (int i=0;i<AT_INPUT_WIDTH*AT_INPUT_HEIGHT;i++){
-        STFT_Spectrogram[i] = 0;
-    }
-#else
+
 
     // open FS and read the binary files with STFT (flaot values)
     __FS_INIT(fs);
@@ -641,12 +626,11 @@ void denoiser(void)
             PRINTF("(%f), ",STFT_Spectrogram[i]);
             STFT_Magnitude[i] = (f16) spectrogram_fp32[i];
         }
-#endif // fake data or data from file
 
 #endif // load data STFT or AUDIO
 
 
-#ifndef NN_INF_NOT
+#ifndef DISABLE_NN_INFERENCE
         /******
             NN Denoiser Task
                 Model already constructed and never destructed
@@ -761,7 +745,7 @@ void denoiser(void)
 #endif
 
 
-#ifndef NN_INF_NOT
+#ifndef DISABLE_NN_INFERENCE
     __PREFIX(CNN_Destruct)();
 #endif
 

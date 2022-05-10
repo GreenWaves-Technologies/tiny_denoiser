@@ -9,6 +9,44 @@ ifndef GAP_SDK_HOME
 endif
 
 
+##############################################
+############ Application Mode ################
+# 0:	Demo: input SFU, Run Denoiser, Output SFU
+# 1:	DenoiseWav: Input file Wav, Run Denoiser, Output file Wav
+# 2: 	DSPWav_test: Input file Wav, Run Denoiser but not NN, Check Output Wav
+# 3:  NN_Test: Input file STFT, Run NN Denoiser only, check NN Output
+APP_MODE?=0
+############################################## 
+ifeq ($(APP_MODE), 0)
+	IS_SFU=1 
+	IS_INPUT_STFT=0
+	DISABLE_NN_INFERENCE=0
+	APPLY_DENOISER=1
+endif
+
+ifeq ($(APP_MODE), 1)
+	IS_SFU=0 
+	IS_INPUT_STFT=0
+	DISABLE_NN_INFERENCE=0
+	APPLY_DENOISER=1
+endif
+
+ifeq ($(APP_MODE), 2)
+	IS_SFU=0 
+	IS_INPUT_STFT=0
+	DISABLE_NN_INFERENCE=1
+	APPLY_DENOISER=1 # checkme
+endif
+
+ifeq ($(APP_MODE), 3)
+	IS_SFU=0 
+	IS_INPUT_STFT=1
+	DISABLE_NN_INFERENCE=1
+	APPLY_DENOISER=1
+endif
+############################################## 
+
+
 #quantization dependent features
 
 # Quantization Mode
@@ -20,9 +58,16 @@ SILENT?=1
 DEBUG?=0
 DEBUG_STFT?=0
 
+
+FREQ_CL=370
+FREQ_FC=370
+
+
 NNTOOL_EXTRA_FLAGS =
 ifeq 		'$(QUANT_BITS)' '8'
 	MODEL_SQ8=1
+	MODEL_FP16=1
+
 	NNTOOL_EXTRA_FLAGS=--use_lut_sigmoid --use_lut_tanh
 	ifeq ($(GRU), 0)
 		NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_int8
@@ -81,11 +126,7 @@ MODEL_PATH = $(MODEL_BUILD)/$(MODEL_PREFIX).onnx
 TENSORS_DIR = $(MODEL_BUILD)/tensors
 MODEL_TENSORS = $(MODEL_BUILD)/$(MODEL_PREFIX)_L3_Flash_Const.dat
 
-#Test Samples
-IS_FAKE_SIGNAL_IN?=0
-IS_INPUT_STFT?=0
-NN_INF_NOT?=0
-APPLY_DENOISER?=1
+
 
 # set the input files
 WAV_FILE?=$(CURDIR)/samples/sample_0000.wav
@@ -111,7 +152,8 @@ ifeq '$(TARGET_CHIP)' 'GAP9_V2'
 	CLUSTER_SLAVE_STACK_SIZE=2048
 	CLUSTER_NUM_CORES=8
 	TOTAL_STACK_SIZE=$(shell expr $(CLUSTER_STACK_SIZE) \+ $(CLUSTER_SLAVE_STACK_SIZE) \* $(CLUSTER_NUM_CORES))
-	MODEL_L1_MEMORY=$(shell expr 120000 \- $(TOTAL_STACK_SIZE))
+#	MODEL_L1_MEMORY=$(shell expr 120000 \- $(TOTAL_STACK_SIZE))
+	MODEL_L1_MEMORY=$(shell expr  50000 \- $(TOTAL_STACK_SIZE))
 #	MODEL_L2_MEMORY=1300000
 	MODEL_L2_MEMORY=1000000
 	MODEL_L3_MEMORY=8000000
@@ -155,10 +197,11 @@ include $(RULES_DIR)/at_common_decl.mk
 include stft_model.mk
 
 RAM_FLASH_TYPE ?= HYPER
-PMSIS_OS=pulpos
+PMSIS_OS=freertos
 
 ifeq '$(RAM_FLASH_TYPE)' 'HYPER'
 APP_CFLAGS += -DUSE_HYPER
+CONFIG_HYPERRAM = 1
 MODEL_L3_EXEC=hram
 MODEL_L3_CONST=hflash
 else
@@ -208,7 +251,7 @@ APP_LDFLAGS		+= -lm
 
 
 
-APP_CFLAGS += -DIS_FAKE_SIGNAL_IN=$(IS_FAKE_SIGNAL_IN)
+APP_CFLAGS += -DIS_SFU=$(IS_SFU)
 APP_CFLAGS += -DIS_AUDIO_FILE=$(IS_AUDIO_FILE)
 APP_CFLAGS += -DIS_INPUT_STFT=$(IS_INPUT_STFT)
 
@@ -263,13 +306,13 @@ ifeq ($(DEBUG), 1)
 endif
 
 ifeq ($(APPLY_DENOISER), 0)
-	APP_CFLAGS += -DNN_INF_NOT
+	APP_CFLAGS += -DDISABLE_NN_INFERENCE
 endif
 ifeq ($(APPLY_DENOISER), 1)
 	APP_CFLAGS += -DAPPLY_DENOISER
 endif
-ifeq ($(NN_INF_NOT), 1)
-	APP_CFLAGS += -DNN_INF_NOT
+ifeq ($(DISABLE_NN_INFERENCE), 1)
+	APP_CFLAGS += -DDISABLE_NN_INFERENCE
 endif
 
 ifeq ($(GRU), 1)
