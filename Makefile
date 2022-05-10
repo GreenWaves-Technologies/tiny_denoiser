@@ -155,10 +155,11 @@ include $(RULES_DIR)/at_common_decl.mk
 include stft_model.mk
 
 RAM_FLASH_TYPE ?= HYPER
-PMSIS_OS=pulpos
+PMSIS_OS=freertos
 
 ifeq '$(RAM_FLASH_TYPE)' 'HYPER'
 APP_CFLAGS += -DUSE_HYPER
+CONFIG_HYPERRAM = 1
 MODEL_L3_EXEC=hram
 MODEL_L3_CONST=hflash
 else
