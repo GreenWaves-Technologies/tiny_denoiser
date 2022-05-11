@@ -15,7 +15,7 @@ endif
 # 1:	DenoiseWav: Input file Wav, Run Denoiser, Output file Wav
 # 2: 	DSPWav_test: Input file Wav, Run Denoiser but not NN, Check Output Wav
 # 3:  NN_Test: Input file STFT, Run NN Denoiser only, check NN Output
-APP_MODE?=0
+APP_MODE?=2
 ############################################## 
 ifeq ($(APP_MODE), 0)
 	IS_SFU=1 
@@ -54,7 +54,7 @@ endif
 QUANT_BITS?=FP16
 GRU?=0
 
-SILENT?=1
+SILENT?=0
 DEBUG?=0
 DEBUG_STFT?=0
 
@@ -145,8 +145,8 @@ AT_INPUT_HEIGHT=1
 
 
 ifeq '$(TARGET_CHIP)' 'GAP9_V2'
-	FREQ_CL?=50
-	FREQ_FC?=50
+	FREQ_CL?=370
+	FREQ_FC?=370
 
 	CLUSTER_STACK_SIZE=4096
 	CLUSTER_SLAVE_STACK_SIZE=2048

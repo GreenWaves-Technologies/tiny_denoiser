@@ -1,7 +1,7 @@
 #include "AutoTilerLib.h"
 #include "AutoTilerLibTypes.h"
 #include "DSP_Generators.h"
-#include "STFT_params.h"  // user file
+//#include "STFT_params.h"  // user file
 
 
 void FFTConfiguration(unsigned int L1Memory)
@@ -65,7 +65,7 @@ int main(int argc, char **argv)
       0,          // ctrl
       1,          // all the frames
       N_FFT,      // Nfft
-      0,          // InvertWindow, bypassed and manually inserted
+      1,          // InvertWindow, bypassed and manually inserted
       FLOAT16     // datatype
     );
 

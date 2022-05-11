@@ -72,7 +72,7 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
                 >> skip STFT computation and use synthetic STFT matrix
         APPLY_DENOISER
 */
-//#define CHECKSUM
+#define CHECKSUM
 
 #if IS_INPUT_STFT == 0 
 
@@ -159,10 +159,10 @@ PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_1_C[RNN_STATE_DIM_1];
         STFT(
             Audio_Frame, 
             STFT_Spectrogram, 
-            TwiddlesLUT_f16,
-            RFFTTwiddlesLUT_f16,
-            SwapTable_f16,
-            WindowLUT_f16
+            TwiddlesLUT,
+            RFFTTwiddlesLUT,
+            SwapTable,
+            WindowLUT
         );
 
         unsigned int ti = gap_cl_readhwtimer() - ta;
@@ -203,18 +203,25 @@ PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_1_C[RNN_STATE_DIM_1];
         iSTFT(
             STFT_Spectrogram, 
             STFT_Spectrogram, 
-            TwiddlesLUT_f16,   
-            RFFTTwiddlesLUT_f16,   
-            SwapTable_f16
+            TwiddlesLUT,   
+            RFFTTwiddlesLUT,   
+            SwapTable,
+            InvWindowLUT
         );
         ti = gap_cl_readhwtimer() - ta;
         PRINTF("%45s: Cycles: %10d\n","iSTFT: ", ti );
 
         // Inverse Hanning Windowing
         ta = gap_cl_readhwtimer();
+        PRINTF("\nAudio Out = ");
         for(int i=0;i<FRAME_SIZE;i++){
-            Audio_Frame[i] = hanning_inv[i] * STFT_Spectrogram[i];
+            PRINTF("%04f, ", STFT_Spectrogram[i]);
+            Audio_Frame[i] = STFT_Spectrogram[i];
+
+//            Audio_Frame[i] = hanning_inv[i] * STFT_Spectrogram[i];
         }
+        PRINTF("\n");
+
         ti = gap_cl_readhwtimer() - ta;
         PRINTF("%45s: Cycles: %10d\n","iHanning: ", ti );
     }
@@ -352,8 +359,7 @@ void denoiser(void)
     // Voltage-Frequency settings
     uint32_t voltage =1200;
     pi_freq_set(PI_FREQ_DOMAIN_FC, FREQ_FC*1000*1000);
-    pi_freq_set(PI_FREQ_DOMAIN_CL, FREQ_CL*1000*1000);
-    pi_freq_set(PI_FREQ_DOMAIN_PERIPH, 300*1000*1000);
+    pi_freq_set(PI_FREQ_DOMAIN_PERIPH, 370*1000*1000);
 
     //PMU_set_voltage(voltage, 0);
     printf("Set VDD voltage as %.2f, FC Frequency as %d MHz, CL Frequency = %d MHz\n", 
@@ -419,29 +425,6 @@ void denoiser(void)
     }
     pi_cluster_task_stacks(task_stft, NULL, SLAVE_STACK_SIZE);
 
-#ifndef DISABLE_NN_INFERENCE
-    /******
-        Setup Denoiser NN inference task (if enabled)
-    ******/
-    printf("Setup Cluster Task for inference!\n");
-    struct pi_cluster_task* task_net;
-    task_net = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
-    pi_cluster_task(task_net,&RunDenoiser,NULL);
-    if(task_net==NULL) {
-      PRINTF("pi_cluster_task alloc Error!\n");
-      pmsis_exit(-1);
-    }
-    pi_cluster_task_stacks(task_net, NULL, SLAVE_STACK_SIZE);
-    PRINTF("Stack size is %d and %d\n",STACK_SIZE,SLAVE_STACK_SIZE );
-    
-    // Reset LSTM
-    ResetLSTM = 1;
-    for(int i=0; i<RNN_STATE_DIM_0; i++){
-        RNN_STATE_0_I[i] = (DATATYPE_SIGNAL_INF) 0.0f;
-    }
-    for(int i=0; i<RNN_STATE_DIM_1; i++){
-        RNN_STATE_1_I[i] = (DATATYPE_SIGNAL_INF) 0.0f;
-    }
 
 
 #if IS_INPUT_STFT == 0 
@@ -496,6 +479,31 @@ void denoiser(void)
     pi_l2_free(__PREFIX(_L2_Memory),denoiser_L2_SIZE);
 
 #endif
+
+
+#ifndef DISABLE_NN_INFERENCE
+    /******
+        Setup Denoiser NN inference task (if enabled)
+    ******/
+    printf("Setup Cluster Task for inference!\n");
+    struct pi_cluster_task* task_net;
+    task_net = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
+    pi_cluster_task(task_net,&RunDenoiser,NULL);
+    if(task_net==NULL) {
+      PRINTF("pi_cluster_task alloc Error!\n");
+      pmsis_exit(-1);
+    }
+    pi_cluster_task_stacks(task_net, NULL, SLAVE_STACK_SIZE);
+    PRINTF("Stack size is %d and %d\n",STACK_SIZE,SLAVE_STACK_SIZE );
+    
+    // Reset LSTM
+    ResetLSTM = 1;
+    for(int i=0; i<RNN_STATE_DIM_0; i++){
+        RNN_STATE_0_I[i] = (DATATYPE_SIGNAL_INF) 0.0f;
+    }
+    for(int i=0; i<RNN_STATE_DIM_1; i++){
+        RNN_STATE_1_I[i] = (DATATYPE_SIGNAL_INF) 0.0f;
+    }
 
     /******
         Denoiser NN constructor
@@ -593,7 +601,6 @@ void denoiser(void)
 #else ///load the STFT
 
 
-
     // open FS and read the binary files with STFT (flaot values)
     __FS_INIT(fs);
 
@@ -645,7 +652,7 @@ void denoiser(void)
         }
 
 
-        #ifdef PERF
+    #ifdef PERF
         {
             unsigned int TotalCycles = 0, TotalOper = 0;
             printf("\n");
@@ -659,15 +666,13 @@ void denoiser(void)
             printf("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n", "Total", TotalCycles, TotalOper, ((float) TotalOper)/ TotalCycles);
             printf("\n");
         }
-        #endif  /* PERF */
+    #endif  /* PERF */
 
 
         // Deassert Reset LSTM
         ResetLSTM = 0;
-#endif  // disable nn inference
 
 
-#if IS_INPUT_STFT == 0 // if not loading the STFT
     #ifdef CHECKSUM
         p_err = 0.0f; p_sig=0.0f;
         for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
@@ -682,6 +687,10 @@ void denoiser(void)
         else
             printf("--> Denoiser NOK!\n");
     #endif
+#endif  // disable nn inference
+
+
+#if IS_INPUT_STFT == 0 // if not loading the STFT
 
     /******
         ISTF Task
@@ -708,7 +717,6 @@ void denoiser(void)
 #endif
 
 
-#if IS_FAKE_SIGNAL_IN == 0
 #if IS_INPUT_STFT == 0
 
         // if denoising auio files, outputs are loaded to the L3 output buffer outSig
@@ -727,21 +735,22 @@ void denoiser(void)
 #endif
 
    }   // stop looping over frames
-    #ifdef CHECKSUM
-        p_err = 0.0f; p_sig=0.0f;
-        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-            float err = STFT_Magnitude[i] - Denoiser_Golden[i]; 
-            p_err += err * err;
-            p_sig += STFT_Magnitude[i] * STFT_Magnitude[i];
-        }
-        snr = p_sig / p_err;
-        printf("Denoiser Signal-to-noise ratio in linear scale: %f\n", snr);
-        if (snr > 1000.0f)     // qsnr > 30db
-            printf("--> Denoiser OK!\n");
-        else
-            printf("--> Denoiser NOK!\n");
-    #endif
-#endif
+
+
+//#ifdef CHECKSUM
+//    p_err = 0.0f; p_sig=0.0f;
+//    for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
+//        float err = STFT_Magnitude[i] - Denoiser_Golden[i]; 
+//        p_err += err * err;
+//        p_sig += STFT_Magnitude[i] * STFT_Magnitude[i];
+//    }
+//    snr = p_sig / p_err;
+//    printf("Denoiser Signal-to-noise ratio in linear scale: %f\n", snr);
+//    if (snr > 1000.0f)     // qsnr > 30db
+//        printf("--> Denoiser OK!\n");
+//    else
+//        printf("--> Denoiser NOK!\n");
+//#endif
 
 
 #ifndef DISABLE_NN_INFERENCE

@@ -3,9 +3,15 @@
 FFT_BUILD_DIR ?= $(CURDIR)/BUILD_MODEL_STFT
 FFT_MODEL_GEN = $(FFT_BUILD_DIR)/GenSTFT
 FFT_SRCG += $(TILER_DSP_GENERATOR_PATH)/DSP_Generators.c
-WIN_LUT_Q16 = $(FFT_BUILD_DIR)/WinLUT.def
-WIN_LUT_F16 = $(FFT_BUILD_DIR)/WinLUT_f16.def
-WIN_LUT_F32 = $(FFT_BUILD_DIR)/WinLUT_f32.def
+WIN_LUT = $(FFT_BUILD_DIR)/WinLUT_f16.def
+
+FFT_GEN_SRC = $(FFT_BUILD_DIR)/RFFTKernels.c
+
+
+FRAME_SIZE?=400
+FRAME_STEP?=100
+FRAME_NFFT?=512
+
 
 #SDL_FLAGS= -lSDL2 -lSDL2_ttf -DAT_DISPLAY
 CLUSTER_STACK_SIZE?=4096
@@ -32,22 +38,22 @@ endif
 
 $(FFT_BUILD_DIR):
 	mkdir $(FFT_BUILD_DIR)
-	
-$(WIN_LUT_Q16): $(FFT_BUILD_DIR)
-	python $(TILER_MFCC_GEN_LUT_SCRIPT) --fft_lut_file $(WIN_LUT_Q16) --name_suffix "_Fix" --win_func "hanning" --dtype "int" --frame_size 400 --n_fft 512
-$(WIN_LUT_F32): $(FFT_BUILD_DIR)
-	python $(TILER_MFCC_GEN_LUT_SCRIPT) --fft_lut_file $(WIN_LUT_F32) --name_suffix "_f32" --win_func "hanning" --dtype "float32" --frame_size 400 --n_fft 512
-$(WIN_LUT_F16): $(FFT_BUILD_DIR)
-	python $(TILER_MFCC_GEN_LUT_SCRIPT) --fft_lut_file $(WIN_LUT_F16) --name_suffix "_f16" --win_func "hanning" --dtype "float16" --frame_size 400 --n_fft 512
-	
+
+$(WIN_LUT): | $(FFT_BUILD_DIR)
+	python $(TILER_MFCC_GEN_LUT_SCRIPT) --fft_lut_file $(WIN_LUT) --win_func "hamming" --dtype "float16" --frame_size $(FRAME_SIZE) --frame_step $(FRAME_STEP) --n_fft $(FRAME_NFFT) --gen_inv
 
 # Build the code generator from the model code
-$(FFT_MODEL_GEN): $(FFT_BUILD_DIR)
-	gcc -g -o $(FFT_MODEL_GEN) -I$(TILER_DSP_GENERATOR_PATH) -I$(TILER_INC) -I$(TILER_EMU_INC) $(TRAINED_MODEL_PATH)/STFTModel.c -I$(TRAINED_MODEL_PATH) $(FFT_SRCG) $(TILER_LIB) $(GEN_FLAG)
+$(FFT_MODEL_GEN): | $(FFT_BUILD_DIR)
+	gcc -g -o $(FFT_MODEL_GEN) -I. -I$(TILER_DSP_GENERATOR_PATH) -I$(TILER_INC) -I$(TILER_EMU_INC) $(TRAINED_MODEL_PATH)/STFTModel.c $(FFT_SRCG) $(TILER_LIB) $(GEN_FLAG) $(SDL_FLAGS) -DFRAME_SIZE=$(FRAME_SIZE) -DFRAME_STEP=$(FRAME_STEP) -DN_FFT=$(FRAME_NFFT)
+
 
 # Run the code generator  kernel code
-gen_fft_code: $(FFT_MODEL_GEN) $(WIN_LUT_Q16) $(WIN_LUT_F32) $(WIN_LUT_F16)
+$(FFT_GEN_SRC): $(FFT_MODEL_GEN) $(WIN_LUT) | $(FFT_BUILD_DIR)
 	$(FFT_MODEL_GEN) -o $(FFT_BUILD_DIR) -c $(FFT_BUILD_DIR) $(MODEL_GEN_EXTRA_FLAGS)
+
+gen_fft_code: $(FFT_GEN_SRC)
 
 clean_fft_code:
 	rm -rf $(FFT_BUILD_DIR)
+
+.PHONY: gen_fft_code clean_fft_code
