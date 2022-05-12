@@ -72,7 +72,7 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
                 >> skip STFT computation and use synthetic STFT matrix
         APPLY_DENOISER
 */
-#define CHECKSUM
+//#define CHECKSUM
 
 #if IS_INPUT_STFT == 0 
 
@@ -185,7 +185,6 @@ PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_1_C[RNN_STATE_DIM_1];
         iSTFT computation
             argument parameters are manually set based on STFT configuration
     */
-    #include "istft_window.h"   // includes the iSTFT windowing parameters
 
     static void RuniSTFT()
     {
@@ -210,20 +209,6 @@ PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_1_C[RNN_STATE_DIM_1];
         );
         ti = gap_cl_readhwtimer() - ta;
         PRINTF("%45s: Cycles: %10d\n","iSTFT: ", ti );
-
-        // Inverse Hanning Windowing
-        ta = gap_cl_readhwtimer();
-        PRINTF("\nAudio Out = ");
-        for(int i=0;i<FRAME_SIZE;i++){
-            PRINTF("%04f, ", STFT_Spectrogram[i]);
-            Audio_Frame[i] = STFT_Spectrogram[i];
-
-//            Audio_Frame[i] = hanning_inv[i] * STFT_Spectrogram[i];
-        }
-        PRINTF("\n");
-
-        ti = gap_cl_readhwtimer() - ta;
-        PRINTF("%45s: Cycles: %10d\n","iHanning: ", ti );
     }
 
 #endif  // end TF transformation 
@@ -555,7 +540,7 @@ void denoiser(void)
         ******/
         // compute mfcc if not read from file
         PRINTF("\n\n****** Computing STFT ***** \n");
-        //task_stft->entry = &RunSTFT;
+        pi_cluster_task(task_stft,&RunSTFT,NULL);
 
         L1_Memory = pmsis_l1_malloc(_L1_Memory_SIZE);
         if (L1_Memory==NULL){
@@ -696,8 +681,7 @@ void denoiser(void)
         ISTF Task
     ******/
     PRINTF("\n\n****** Computing iSTFT ***** \n");
-
-    //task_stft->entry = &RuniSTFT;
+    pi_cluster_task(task_stft,&RuniSTFT,NULL);
     L1_Memory = pmsis_l1_malloc(_L1_Memory_SIZE);
     if (L1_Memory==NULL){
         printf("Error allocating L1\n");
@@ -708,12 +692,45 @@ void denoiser(void)
 
     pmsis_l1_malloc_free(L1_Memory,_L1_Memory_SIZE);
 
-    // check spectrogram results
+
+    #ifdef CHECKSUM
+        //printf("Start the checksum check\n");
+
+        p_err = 0.0f; p_sig=0.0f;
+        for (int i = 0; i< FRAME_SIZE; i++ ){
+            printf("Iter %d\n", i);
+
+            float err = (float)(Audio_Frame[i] - STFT_Spectrogram[i]); 
+            printf("Iter1 %d = %f\n", i, err);
+
+            p_err += (err * err);
+            printf("Iter2 %10f\n", p_err);
+
+            p_sig += Audio_Frame[i] * Audio_Frame[i];
+            printf("Iter3 %f\n", p_sig);
+
+        }
+        printf("Completed the checksum check\n");
+
+        if (p_err == 0.0f) 
+            snr = 1000000000.0f;
+        else
+            snr = p_sig / p_err;
+        printf("Denoiser Signal-to-noise ratio in linear scale: %f\n", snr);
+        if (snr > 1000.0f)     // qsnr > 30db
+            printf("--> STFT+iSTFT OK!\n");
+        else
+            printf("--> STFT+iSTFT NOK!\n");
+    #endif
+
+    // copy spectrogram into Audio Frames and print results
     PRINTF("\nAudio Out: ");
     for (int i= 0 ; i<FRAME_SIZE; i++){
         PRINTF("%f, ", Audio_Frame[i] );
+        Audio_Frame[i] = STFT_Spectrogram[i];
     }
     PRINTF("\n");
+
 #endif
 
 
@@ -737,20 +754,7 @@ void denoiser(void)
    }   // stop looping over frames
 
 
-//#ifdef CHECKSUM
-//    p_err = 0.0f; p_sig=0.0f;
-//    for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-//        float err = STFT_Magnitude[i] - Denoiser_Golden[i]; 
-//        p_err += err * err;
-//        p_sig += STFT_Magnitude[i] * STFT_Magnitude[i];
-//    }
-//    snr = p_sig / p_err;
-//    printf("Denoiser Signal-to-noise ratio in linear scale: %f\n", snr);
-//    if (snr > 1000.0f)     // qsnr > 30db
-//        printf("--> Denoiser OK!\n");
-//    else
-//        printf("--> Denoiser NOK!\n");
-//#endif
+
 
 
 #ifndef DISABLE_NN_INFERENCE
