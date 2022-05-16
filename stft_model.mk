@@ -40,7 +40,7 @@ $(FFT_BUILD_DIR):
 	mkdir $(FFT_BUILD_DIR)
 
 $(WIN_LUT): | $(FFT_BUILD_DIR)
-	python $(TILER_MFCC_GEN_LUT_SCRIPT) --fft_lut_file $(WIN_LUT) --win_func "hamming" --dtype "float16" --frame_size $(FRAME_SIZE) --frame_step $(FRAME_STEP) --n_fft $(FRAME_NFFT) --gen_inv
+	python $(TILER_MFCC_GEN_LUT_SCRIPT) --fft_lut_file $(WIN_LUT) --win_func "hanning" --dtype "float16" --frame_size $(FRAME_SIZE) --frame_step $(FRAME_STEP) --n_fft $(FRAME_NFFT) --gen_inv
 
 # Build the code generator from the model code
 $(FFT_MODEL_GEN): | $(FFT_BUILD_DIR)

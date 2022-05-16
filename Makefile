@@ -15,29 +15,30 @@ endif
 # 1:	DenoiseWav: Input file Wav, Run Denoiser, Output file Wav
 # 2: 	DSPWav_test: Input file Wav, Run Denoiser but not NN, Check Output Wav
 # 3:  NN_Test: Input file STFT, Run NN Denoiser only, check NN Output
-APP_MODE?=2
+APP_MODE?=3
 ############################################## 
+# 0:	Demo
 ifeq ($(APP_MODE), 0)
 	IS_SFU=1 
 	IS_INPUT_STFT=0
 	DISABLE_NN_INFERENCE=0
 	APPLY_DENOISER=1
 endif
-
+# 1:	DenoiseWav
 ifeq ($(APP_MODE), 1)
 	IS_SFU=0 
 	IS_INPUT_STFT=0
 	DISABLE_NN_INFERENCE=0
 	APPLY_DENOISER=1
 endif
-
+# 2: 	DSPWav_test
 ifeq ($(APP_MODE), 2)
 	IS_SFU=0 
 	IS_INPUT_STFT=0
 	DISABLE_NN_INFERENCE=1
 	APPLY_DENOISER=1 # checkme
 endif
-
+# 3:  NN_Test
 ifeq ($(APP_MODE), 3)
 	IS_SFU=0 
 	IS_INPUT_STFT=1

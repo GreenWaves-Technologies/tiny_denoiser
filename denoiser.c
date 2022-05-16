@@ -72,7 +72,7 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
                 >> skip STFT computation and use synthetic STFT matrix
         APPLY_DENOISER
 */
-//#define CHECKSUM
+#define CHECKSUM
 
 #if IS_INPUT_STFT == 0 
 
@@ -343,8 +343,8 @@ void denoiser(void)
 
     // Voltage-Frequency settings
     uint32_t voltage =1200;
-    pi_freq_set(PI_FREQ_DOMAIN_FC, FREQ_FC*1000*1000);
-    pi_freq_set(PI_FREQ_DOMAIN_PERIPH, 370*1000*1000);
+    pi_freq_set(PI_FREQ_DOMAIN_FC,      FREQ_FC*1000*1000);
+    pi_freq_set(PI_FREQ_DOMAIN_PERIPH,  FREQ_FC*1000*1000);
 
     //PMU_set_voltage(voltage, 0);
     printf("Set VDD voltage as %.2f, FC Frequency as %d MHz, CL Frequency = %d MHz\n", 
@@ -398,6 +398,9 @@ void denoiser(void)
     }
     pi_freq_set(PI_FREQ_DOMAIN_CL, FREQ_CL*1000*1000);
 
+
+#if IS_INPUT_STFT == 0 
+
     /******
         Setup STFT/ISTF task
     ******/
@@ -410,9 +413,6 @@ void denoiser(void)
     }
     pi_cluster_task_stacks(task_stft, NULL, SLAVE_STACK_SIZE);
 
-
-
-#if IS_INPUT_STFT == 0 
     /****
         Read Audio Data from file using __PREFIX(_L2_Memory) as temporary buffer
         Data are prepared in L3 external memory
@@ -698,16 +698,9 @@ void denoiser(void)
 
         p_err = 0.0f; p_sig=0.0f;
         for (int i = 0; i< FRAME_SIZE; i++ ){
-            printf("Iter %d\n", i);
-
             float err = (float)(Audio_Frame[i] - STFT_Spectrogram[i]); 
-            printf("Iter1 %d = %f\n", i, err);
-
             p_err += (err * err);
-            printf("Iter2 %10f\n", p_err);
-
             p_sig += Audio_Frame[i] * Audio_Frame[i];
-            printf("Iter3 %f\n", p_sig);
 
         }
         printf("Completed the checksum check\n");
