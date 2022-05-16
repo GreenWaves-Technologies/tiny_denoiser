@@ -303,11 +303,11 @@ DATATYPE_SIGNAL_INF * net_in_out = (DATATYPE_SIGNAL_INF * ) STFT_Magnitude;
 #ifdef APPLY_DENOISER
 
     // debug print
-    PRINTF("\Denoiser Output: ");
-    for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-        PRINTF("%f, ", STFT_Magnitude[i]);
-    }
-    PRINTF("\n");
+//    PRINTF("\Denoiser Output: ");
+//    for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
+//        PRINTF("%f, ", STFT_Magnitude[i]);
+//    }
+//    PRINTF("\n");
 
 
     // if denoiser is enabled, filter the STFT spectrogram with the mask in STFT_Magnitude
@@ -318,12 +318,12 @@ DATATYPE_SIGNAL_INF * net_in_out = (DATATYPE_SIGNAL_INF * ) STFT_Magnitude;
         }
     ti = gap_cl_readhwtimer() - ta;
 
-    // debug print
-    PRINTF("\nSTFT Filtered: ");
-    for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2; i++ ){
-        PRINTF("%f, ", STFT_Spectrogram[i]);
-    }
-    PRINTF("\n");
+//    // debug print
+//    PRINTF("\nSTFT Filtered: ");
+//    for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2; i++ ){
+//        PRINTF("%f, ", STFT_Spectrogram[i]);
+//    }
+//    PRINTF("\n");
 
     PRINTF("%45s: Cycles: %10d\n","iScaling: ", ti );
 
@@ -609,7 +609,7 @@ void denoiser(void)
         }
         printf("File %x of size %d\n", File, sizeof(switch_file_t));
 
-        int TotBytes = sizeof(float)*AT_INPUT_WIDTH;
+        int TotBytes = sizeof(float)*AT_INPUT_WIDTH*AT_INPUT_HEIGHT;
         int len = __READ(File, STFT_Spectrogram, TotBytes);
         if (len != TotBytes){
             printf("Too few bytes in %s\n", WavName); 
@@ -620,9 +620,11 @@ void denoiser(void)
         float * spectrogram_fp32 = (float *)STFT_Spectrogram;
         for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
             PRINTF("%f ",spectrogram_fp32[i]);
-            STFT_Spectrogram[i] = (f16) spectrogram_fp32[i];    // FIXME: this may be removed
-            PRINTF("(%f), ",STFT_Spectrogram[i]);
-            STFT_Magnitude[i] = (f16) spectrogram_fp32[i];
+//            STFT_Spectrogram[i] = (f16) spectrogram_fp32[i];    // FIXME: this may be removed
+//            PRINTF("(%f), ",STFT_Spectrogram[i]);
+            STFT_Magnitude[i] = (DATATYPE_SIGNAL) spectrogram_fp32[i] ;
+            PRINTF(" - %f), ",STFT_Magnitude[i]);
+
         }
 
 #endif // load data STFT or AUDIO
@@ -635,19 +637,19 @@ void denoiser(void)
         ******/
         PRINTF("\n\n****** Denoiser ***** \n");
 
-        PRINTF("\n Denoiser Input\n");
-        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-            PRINTF("%f, ",STFT_Magnitude[i]);
-        }
+//        PRINTF("\n Denoiser Input\n");
+//        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
+//            PRINTF("%f, ",STFT_Magnitude[i]);
+//        }
 
 
         PRINTF("Send task to cluster\n");
    	    pi_cluster_send_task_to_cl(&cluster_dev, task_net);
 
-        PRINTF("\n Denoiser Output\n");
-        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-            PRINTF("%f, ",STFT_Magnitude[i]);
-        }
+//        PRINTF("\n Denoiser Output\n");
+//        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
+//            PRINTF("%f, ",STFT_Magnitude[i]);
+//        }
 
 
     #ifdef PERF
@@ -674,13 +676,13 @@ void denoiser(void)
     #ifdef CHECKSUM
         p_err = 0.0f; p_sig=0.0f;
         for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-            float err = STFT_Magnitude[i] - Denoiser_Golden[i]; 
+            float err = ((float) STFT_Magnitude[i]) - Denoiser_Golden[i]; 
             p_err += err * err;
             p_sig += STFT_Magnitude[i] * STFT_Magnitude[i];
         }
         snr = p_sig / p_err;
         printf("Denoiser Signal-to-noise ratio in linear scale: %f\n", snr);
-        if (snr > 100.0f)     // qsnr > 20db
+        if (snr > 90.0f)     // qsnr >~ 20db
             printf("--> Denoiser OK!\n");
         else
             printf("--> Denoiser NOK!\n");
