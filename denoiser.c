@@ -255,15 +255,13 @@ DATATYPE_SIGNAL_INF * net_in_out = (DATATYPE_SIGNAL_INF * ) STFT_Magnitude;
           reset: only enabled at the start of the application
     */
   __PREFIX(CNN)(
-        STFT_Magnitude,  
-        RNN_STATE_0_I,
 #ifndef GRU
+        RNN_STATE_1_C,
         RNN_STATE_0_C,
 #endif
         RNN_STATE_1_I,
-#ifndef GRU
-        RNN_STATE_1_C,
-#endif
+        RNN_STATE_0_I,        
+        STFT_Magnitude,  
         ResetLSTM, 
         ResetLSTM, 
         STFT_Magnitude
@@ -303,6 +301,15 @@ DATATYPE_SIGNAL_INF * net_in_out = (DATATYPE_SIGNAL_INF * ) STFT_Magnitude;
 
 // apply denoising here
 #ifdef APPLY_DENOISER
+
+    // debug print
+    PRINTF("\Denoiser Output: ");
+    for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
+        PRINTF("%f, ", STFT_Magnitude[i]);
+    }
+    PRINTF("\n");
+
+
     // if denoiser is enabled, filter the STFT spectrogram with the mask in STFT_Magnitude
     ta = gap_cl_readhwtimer();
         for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
@@ -589,9 +596,9 @@ void denoiser(void)
     // open FS and read the binary files with STFT (flaot values)
     __FS_INIT(fs);
 
-    for(int frame_id = 0; frame_id<TOT_FRAMES; frame_id++){
+    for(int frame_id = 0; frame_id<STFT_FRAMES; frame_id++){
 
-        PRINTF("Reading STFT file %.4d/%d...\n", frame_id, TOT_FRAMES );
+        PRINTF("Reading STFT file %.4d/%d...\n", frame_id, STFT_FRAMES );
         sprintf(WavName, "../../../samples/mags_%.4d.bin",frame_id);
         printf("File being read is : %s\n", WavName);
 
@@ -627,6 +634,12 @@ void denoiser(void)
                 Model already constructed and never destructed
         ******/
         PRINTF("\n\n****** Denoiser ***** \n");
+
+        PRINTF("\n Denoiser Input\n");
+        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
+            PRINTF("%f, ",STFT_Magnitude[i]);
+        }
+
 
         PRINTF("Send task to cluster\n");
    	    pi_cluster_send_task_to_cl(&cluster_dev, task_net);
@@ -667,7 +680,7 @@ void denoiser(void)
         }
         snr = p_sig / p_err;
         printf("Denoiser Signal-to-noise ratio in linear scale: %f\n", snr);
-        if (snr > 1000.0f)     // qsnr > 30db
+        if (snr > 100.0f)     // qsnr > 20db
             printf("--> Denoiser OK!\n");
         else
             printf("--> Denoiser NOK!\n");
@@ -798,13 +811,12 @@ int main()
 {
 	PRINTF("\n\n\t *** Denoiser ***\n\n");
 
-#if IS_INPUT_STFT == 0 
-#if IS_FAKE_SIGNAL_IN == 0
+#if IS_SFU == 0 
     #define __XSTR(__s) __STR(__s)
     #define __STR(__s) #__s
     WavName = __XSTR(WAV_FILE);
 #endif    
-#endif
+
 
     return pmsis_kickoff((void *) denoiser);
 }
