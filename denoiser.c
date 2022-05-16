@@ -298,43 +298,20 @@ DATATYPE_SIGNAL_INF * net_in_out = (DATATYPE_SIGNAL_INF * ) STFT_Magnitude;
 //  }
 //#endif
 
-
-// apply denoising here
-#ifdef APPLY_DENOISER
-
-    // debug print
-//    PRINTF("\Denoiser Output: ");
-//    for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-//        PRINTF("%f, ", STFT_Magnitude[i]);
-//    }
-//    PRINTF("\n");
-
-
-    // if denoiser is enabled, filter the STFT spectrogram with the mask in STFT_Magnitude
+    // apply denoising here: filter the STFT spectrogram with the mask in STFT_Magnitude
     ta = gap_cl_readhwtimer();
-        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-            STFT_Spectrogram[2*i]    = STFT_Spectrogram[2*i]   * STFT_Magnitude[i];
-            STFT_Spectrogram[2*i+1]  = STFT_Spectrogram[2*i+1] * STFT_Magnitude[i];
-        }
+    for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
+        STFT_Spectrogram[2*i]    = STFT_Spectrogram[2*i]   * STFT_Magnitude[i];
+        STFT_Spectrogram[2*i+1]  = STFT_Spectrogram[2*i+1] * STFT_Magnitude[i];
+    }
     ti = gap_cl_readhwtimer() - ta;
 
-//    // debug print
-//    PRINTF("\nSTFT Filtered: ");
-//    for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2; i++ ){
-//        PRINTF("%f, ", STFT_Spectrogram[i]);
-//    }
-//    PRINTF("\n");
-
     PRINTF("%45s: Cycles: %10d\n","iScaling: ", ti );
-
-#endif // apply scaling
-
-
 
 
 
 #ifdef GAPUINO
-  pi_gpio_pin_write(&gpio, GPIO_OUT, 0);
+    pi_gpio_pin_write(&gpio, GPIO_OUT, 0);
 #endif
 }
 
@@ -637,20 +614,24 @@ void denoiser(void)
         ******/
         PRINTF("\n\n****** Denoiser ***** \n");
 
-//        PRINTF("\n Denoiser Input\n");
-//        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-//            PRINTF("%f, ",STFT_Magnitude[i]);
-//        }
-
+        // Debug PRINT
+        PRINTF("\n Denoiser Input\n");
+        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
+            PRINTF("%f, ",STFT_Magnitude[i]);
+        }
 
         PRINTF("Send task to cluster\n");
    	    pi_cluster_send_task_to_cl(&cluster_dev, task_net);
 
-//        PRINTF("\n Denoiser Output\n");
-//        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-//            PRINTF("%f, ",STFT_Magnitude[i]);
-//        }
-
+        // Debug PRINT
+        PRINTF("\n Denoiser Output\n");
+        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
+            PRINTF("%f, ",STFT_Magnitude[i]);
+        }
+        PRINTF("\nSTFT Filtered: ");
+        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2; i++ ){
+            PRINTF("%f, ", STFT_Spectrogram[i]);
+        }
 
     #ifdef PERF
         {
