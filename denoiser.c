@@ -657,19 +657,21 @@ void denoiser(void)
 
 
     #ifdef CHECKSUM
-        p_err = 0.0f; p_sig=0.0f;
-        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-            float err = ((float) STFT_Magnitude[i]) - Denoiser_Golden[i]; 
-            p_err += err * err;
-            p_sig += STFT_Magnitude[i] * STFT_Magnitude[i];
-        }
-        snr = p_sig / p_err;
-        printf("Denoiser Signal-to-noise ratio in linear scale: %f\n", snr);
-        if (snr > 90.0f)     // qsnr >~ 20db
-            printf("--> Denoiser OK!\n");
-        else{
-            printf("--> Denoiser NOK!\n");
-            pmsis_exit(-1);
+        if(frame_id==STFT_FRAMES-1){
+            p_err = 0.0f; p_sig=0.0f;
+            for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
+                float err = ((float) STFT_Magnitude[i]) - Denoiser_Golden[i]; 
+                p_err += err * err;
+                p_sig += STFT_Magnitude[i] * STFT_Magnitude[i];
+            }
+            snr = p_sig / p_err;
+            printf("Denoiser Signal-to-noise ratio in linear scale: %f\n", snr);
+            if (snr > 90.0f)     // qsnr >~ 20db
+                printf("--> Denoiser OK!\n");
+            else{
+                printf("--> Denoiser NOK!\n");
+                pmsis_exit(-1);
+            }
         }
     #endif
 #endif  // disable nn inference
