@@ -1,0 +1,26 @@
+name: denoiser
+boards: []
+platforms: 
+    - board
+    - gvsoc
+os: 
+    - freertos
+    - pulpos
+chips: 
+    - gap9
+variants:
+    dsp_test:
+        name: denoiser_dsp_test
+        tags:
+            - integration
+            - release
+        duration: standard
+        flags: APP_MODE=2 GRU=0 QUANT_BITS?=FP16 SILENT=1 
+    nn_test:
+        name: denoiser_nn_test
+        tags:
+            - integration
+            - release
+        duration: standard
+        flags: APP_MODE=3 GRU=0 QUANT_BITS=FP16 SILENT=1 STFT_FRAMES=1
+    
