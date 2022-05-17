@@ -561,8 +561,10 @@ void denoiser(void)
         printf("STFT Signal-to-noise ratio in linear scale: %f\n", snr);
         if (snr > 10000.0f)     // qsnr > 40db
             printf("--> STFT OK!\n");
-        else
+        else{
             printf("--> STFT NOK!\n");
+            pmsis_exit(-1);
+        }
 #endif
 
     
@@ -665,8 +667,10 @@ void denoiser(void)
         printf("Denoiser Signal-to-noise ratio in linear scale: %f\n", snr);
         if (snr > 90.0f)     // qsnr >~ 20db
             printf("--> Denoiser OK!\n");
-        else
+        else{
             printf("--> Denoiser NOK!\n");
+            pmsis_exit(-1);
+        }
     #endif
 #endif  // disable nn inference
 
@@ -693,7 +697,7 @@ void denoiser(void)
         //printf("Start the checksum check\n");
 
         p_err = 0.0f; p_sig=0.0f;
-        for (int i = 0; i< FRAME_SIZE; i++ ){
+        for (int i = 10; i< FRAME_SIZE-10; i++ ){
             float err = (float)(Audio_Frame[i] - STFT_Spectrogram[i]); 
             p_err += (err * err);
             p_sig += Audio_Frame[i] * Audio_Frame[i];
@@ -708,8 +712,10 @@ void denoiser(void)
         printf("Denoiser Signal-to-noise ratio in linear scale: %f\n", snr);
         if (snr > 1000.0f)     // qsnr > 30db
             printf("--> STFT+iSTFT OK!\n");
-        else
+        else{
             printf("--> STFT+iSTFT NOK!\n");
+            pmsis_exit(-1);
+        }
     #endif
 
     // copy spectrogram into Audio Frames and print results
