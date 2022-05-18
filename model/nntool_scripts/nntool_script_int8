@@ -10,7 +10,8 @@ show
 
 
 run_pyscript model/nntool_scripts/collect_stats.py samples/quant/ 8 $(GRU) $(MODEL_BUILD)/
-run_pyscript model/nntool_scripts/apply_quant.py samples/quant/ 8 $(GRU) $(MODEL_BUILD)/
+aquant --stats $(MODEL_BUILD)/data_quant.json
+
 
 
 qshow
