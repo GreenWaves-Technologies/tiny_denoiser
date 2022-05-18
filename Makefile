@@ -48,7 +48,6 @@ ifeq ($(APP_MODE), 3)
 endif
 ############################################## 
 
-
 #quantization dependent features
 
 # Quantization Mode
@@ -111,7 +110,7 @@ endif
 ## Model Definition Parameters ##
 BUILD_DIR?=BUILD
 
-MODEL_SUFFIX = _$(QUANT_BITS)BIT
+MODEL_SUFFIX = _$(QUANT_BITS)BIT_MODE$(APP_MODE)
 
 MODEL_BUILD=BUILD_MODEL$(MODEL_SUFFIX)
 
@@ -240,7 +239,7 @@ APP_CFLAGS += -O3 -s -mno-memcpy -fno-tree-loop-distribute-patterns
 
 APP_CFLAGS += -I. -I$(MODEL_COMMON_INC) -I$(TILER_EMU_INC) -I$(TILER_INC) -I$(MODEL_BUILD) $(CNN_LIB_INCLUDE)
 APP_CFLAGS += -I$(MFCC_GENERATOR) -I$(TILER_DSP_KERNEL_PATH) -I$(TILER_DSP_KERNEL_PATH)/LUT_Tables
-APP_CFLAGS += -IBUILD_MODEL_STFT
+APP_CFLAGS += -I$(FFT_BUILD_DIR)
 APP_CFLAGS += -Isamples
 
 #defines
