@@ -660,6 +660,7 @@ void denoiser(void)
             float err = ((float) STFT_Magnitude[i]) - Denoiser_Golden[i]; 
             p_err += err * err;
             p_sig += STFT_Magnitude[i] * STFT_Magnitude[i];
+            PRINTF("[%d] %f vs %f -> %f\n", i, STFT_Magnitude[i], Denoiser_Golden[i], (err * err)/(STFT_Magnitude[i] * STFT_Magnitude[i]));
         }
         snr = p_sig / p_err;
         printf("Denoiser Signal-to-noise ratio in linear scale: %f\n", snr);
@@ -689,12 +690,19 @@ void denoiser(void)
     pmsis_l1_malloc_free(L1_Memory,_L1_Memory_SIZE);
 
 
+    // zeroing borders of reconstruction when using hanning... 
+    int zero_windowing = 10;
+    for(int i = 0; i< zero_windowing; i++ ){
+        Audio_Frame[i] = 0.0f;
+        Audio_Frame[FRAME_SIZE-i] = 0.0f;
+    }
+
     #ifdef CHECKSUM
         //printf("Start the checksum check\n");
 
         p_err = 0.0f; p_sig=0.0f;
-        for (int i = 0; i< FRAME_SIZE; i++ ){
-            float err = (float)(Audio_Frame[i] - STFT_Spectrogram[i]); 
+        for (int i = zero_windowing; i< FRAME_SIZE-zero_windowing; i++ ){   // remove first and last elements from checksum
+            float err = (float)(Audio_Frame[i] - (float) STFT_Spectrogram[i]); 
             p_err += (err * err);
             p_sig += Audio_Frame[i] * Audio_Frame[i];
 

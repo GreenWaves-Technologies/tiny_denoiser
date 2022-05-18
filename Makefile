@@ -22,28 +22,24 @@ ifeq ($(APP_MODE), 0)
 	IS_SFU=1 
 	IS_INPUT_STFT=0
 	DISABLE_NN_INFERENCE=0
-	APPLY_DENOISER=1
 endif
 # 1:	DenoiseWav
 ifeq ($(APP_MODE), 1)
 	IS_SFU=0 
 	IS_INPUT_STFT=0
 	DISABLE_NN_INFERENCE=0
-	APPLY_DENOISER=1
 endif
 # 2: 	DSPWav_test
 ifeq ($(APP_MODE), 2)
 	IS_SFU=0 
 	IS_INPUT_STFT=0
 	DISABLE_NN_INFERENCE=1
-	APPLY_DENOISER=1 # checkme
 endif
 # 3:  NN_Test
 ifeq ($(APP_MODE), 3)
 	IS_SFU=0 
 	IS_INPUT_STFT=1
 	DISABLE_NN_INFERENCE=0
-	APPLY_DENOISER=1
 	STFT_FRAMES=1
 endif
 ############################################## 
@@ -99,10 +95,26 @@ else ifeq 	'$(QUANT_BITS)' 'FP16'
 		NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_fp16_gru
 	endif
 
+else ifeq 	'$(QUANT_BITS)' 'FP16MIXED'
+	MODEL_FP16=1
+	MODEL_SQ8=1
+
+	NNTOOL_EXTRA_FLAGS=--use_lut_sigmoid --use_lut_tanh
+	ifeq ($(GRU), 0)
+		NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_fp16_mixed
+	else
+		NNTOOL_SCRIPT=
+	endif
+
+
+
 else ifeq 	'$(QUANT_BITS)' 'BFP16'
 	NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_bfp16
 	MODEL_FP16=1
 	NNTOOL_EXTRA_FLAGS=--use_lut_sigmoid --use_lut_tanh
+
+
+
 else
 	$(error Quantization mode is not recognized. Choose among 8, 16, FP16 or NE16)
 endif
@@ -272,6 +284,10 @@ ifeq 	'$(QUANT_BITS)' 'FP16'
 	APP_CFLAGS += -DDTYPE=0
 	APP_CFLAGS += -DSTD_FLOAT
 
+else ifeq 	 	'$(QUANT_BITS)' 'FP16MIXED'
+	APP_CFLAGS += -DDTYPE=0
+	APP_CFLAGS += -DSTD_FLOAT
+
 else ifeq 	'$(QUANT_BITS)' 'BFP16'
 	APP_CFLAGS += -DDTYPE=1
 	APP_CFLAGS += -DF16_DSP_BFLOAT
@@ -307,12 +323,7 @@ ifeq ($(DEBUG), 1)
 	APP_CFLAGS += -DPRINTDEBUG
 endif
 
-ifeq ($(APPLY_DENOISER), 0)
-	APP_CFLAGS += -DDISABLE_NN_INFERENCE
-endif
-ifeq ($(APPLY_DENOISER), 1)
-	APP_CFLAGS += -DAPPLY_DENOISER
-endif
+
 ifeq ($(DISABLE_NN_INFERENCE), 1)
 	APP_CFLAGS += -DDISABLE_NN_INFERENCE
 endif
@@ -321,28 +332,6 @@ ifeq ($(GRU), 1)
 	APP_CFLAGS += -DGRU
 endif
 
-
-# LUT based approach
-APPROX_LUT?=0
-ifeq ($(APPROX_LUT), 1)
-	APP_CFLAGS += -DFLOAT_LUT_ACTIVATIONS
-endif
-
-##### DEBUG -- to remove
-ACCURATE_MATH_RNN?=0
-ACCURATE_MATH_SIG?=0
-
-ifeq ($(ACCURATE_MATH_RNN), 1)
-	APP_CFLAGS += -DACCURATE_MATH_RNN
-else ifeq 	($(ACCURATE_MATH_RNN), 2)
-	APP_CFLAGS += -DAPPROX_LUT_RNN
-endif
-
-ifeq ($(ACCURATE_MATH_SIG), 1)
-	APP_CFLAGS += -DACCURATE_MATH_SIG
-else ifeq 	($(ACCURATE_MATH_SIG), 2)
-	APP_CFLAGS += -DAPPROX_LUT_SIG
-endif
 
 
 READFS_FILES=$(abspath $(MODEL_TENSORS))
