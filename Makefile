@@ -220,7 +220,7 @@ io=host
 APP_SRCS += denoiser.c $(MODEL_GEN_C) $(MODEL_COMMON_SRCS) $(CNN_LIB) 
 APP_SRCS += $(GAP_LIB_PATH)/wav_io/wavIO.c
 #APP_SRCS += BUILD_MODEL_STFT/MFCCKernels.c  
-APP_SRCS += BUILD_MODEL_STFT/RFFTKernels.c  
+APP_SRCS += $(FFT_GEN_SRC)
 #APP_SRCS += $(MFCC_KER_SRCS)
 #APP_SRCS += $(TILER_DSP_KERNEL_PATH)/LUT_Tables/TwiddlesDef.c 
 #APP_SRCS += $(TILER_DSP_KERNEL_PATH)/LUT_Tables/RFFTTwiddlesDef.c 
@@ -348,6 +348,7 @@ endif
 READFS_FILES=$(abspath $(MODEL_TENSORS))
 
 
+include common/model_rules.mk
 
 generate_samples:
 	python utils/generate_samples_images.py --dct_coefficient_count $(DCT_COUNT) --window_size_ms $(FRAME_SIZE) --window_stride_ms $(FRAME_STEP)
@@ -358,15 +359,16 @@ test_accuracy:
 test_accuracy_tflite:
 	python utils/test_accuracy_tflite.py --tflite_model $(TRAINED_TFLITE_MODEL) --dct_coefficient_count $(DCT_COUNT) --window_size_ms $(FRAME_SIZE) --window_stride_ms $(FRAME_STEP) --use_power_spectrogram $(USE_POWER)
 
+
 # all depends on the model
 all:: model gen_fft_code
 
 clean:: clean_model clean_fft_code
 	rm -rf BUILD_MODEL*
 
-include common/model_rules.mk
-
-$(info APP_SRCS... $(APP_SRCS))
-$(info APP_CFLAGS... $(APP_CFLAGS))
+#$(info APP_SRCS... $(APP_SRCS))
+#$(info APP_CFLAGS... $(APP_CFLAGS))
 
 include $(RULES_DIR)/pmsis_rules.mk
+
+.PHONY: model gen_fft_code

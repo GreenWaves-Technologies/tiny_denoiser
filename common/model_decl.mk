@@ -52,4 +52,4 @@ MODEL_L3_MEMORY?=$(TARGET_L3_SIZE)
 # hflash - HyperBus Flash
 # qpsiflash - Quad SPI Flash
 MODEL_L3_EXEC?=hram
-$(info GEN ... $(CNN_GEN))
+#$(info GEN ... $(CNN_GEN))
