@@ -21,6 +21,8 @@ import pickle
 quant_sample_path = sys.argv[1]
 quantization_bits = sys.argv[2]
 gru = int(sys.argv[3])
+h_state_len = int(sys.argv[5])
+
 print(gru)
 
 path_model_build = sys.argv[4]
