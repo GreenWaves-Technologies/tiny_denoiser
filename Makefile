@@ -34,6 +34,7 @@ ifeq ($(APP_MODE), 2)
 	IS_SFU=0 
 	IS_INPUT_STFT=0
 	DISABLE_NN_INFERENCE=1
+	WAV_FILE?=$(CURDIR)/samples/dataset/noisy/p232_050.wav
 endif
 # 3:  NN_Test
 ifeq ($(APP_MODE), 3)

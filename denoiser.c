@@ -204,8 +204,7 @@ PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_1_C[RNN_STATE_DIM_1];
             STFT_Spectrogram, 
             TwiddlesLUT,   
             RFFTTwiddlesLUT,   
-            SwapTable,
-            InvWindowLUT
+            SwapTable
         );
         ti = gap_cl_readhwtimer() - ta;
         PRINTF("%45s: Cycles: %10d\n","iSTFT: ", ti );
@@ -550,7 +549,10 @@ void denoiser(void)
         }
         PRINTF("\n");
 
-
+/*
+Useful to check individual STFT
+APP_MODE=2
+WAV_FILE?=$(CURDIR)/samples/sample_0000.wav
 #ifdef CHECKSUM
         for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
             float err = STFT_Magnitude[i] - STFT_Mag_Golden[i]; 
@@ -564,7 +566,7 @@ void denoiser(void)
         else
             printf("--> STFT NOK!\n");
 #endif
-
+*/
     
 
 #else ///load the STFT
@@ -690,41 +692,11 @@ void denoiser(void)
     pmsis_l1_malloc_free(L1_Memory,_L1_Memory_SIZE);
 
 
-    // zeroing borders of reconstruction when using hanning... 
-    int zero_windowing = 10;
-    for(int i = 0; i< zero_windowing; i++ ){
-        Audio_Frame[i] = 0.0f;
-        Audio_Frame[FRAME_SIZE-i] = 0.0f;
-    }
-
-    #ifdef CHECKSUM
-        //printf("Start the checksum check\n");
-
-        p_err = 0.0f; p_sig=0.0f;
-        for (int i = zero_windowing; i< FRAME_SIZE-zero_windowing; i++ ){   // remove first and last elements from checksum
-            float err = (float)(Audio_Frame[i] - (float) STFT_Spectrogram[i]); 
-            p_err += (err * err);
-            p_sig += Audio_Frame[i] * Audio_Frame[i];
-
-        }
-        printf("Completed the checksum check\n");
-
-        if (p_err == 0.0f) 
-            snr = 1000000000.0f;
-        else
-            snr = p_sig / p_err;
-        printf("Denoiser Signal-to-noise ratio in linear scale: %f\n", snr);
-        if (snr > 1000.0f)     // qsnr > 30db
-            printf("--> STFT+iSTFT OK!\n");
-        else
-            printf("--> STFT+iSTFT NOK!\n");
-    #endif
-
     // copy spectrogram into Audio Frames and print results
     PRINTF("\nAudio Out: ");
     for (int i= 0 ; i<FRAME_SIZE; i++){
         PRINTF("%f, ", Audio_Frame[i] );
-        Audio_Frame[i] = STFT_Spectrogram[i];
+        Audio_Frame[i] = STFT_Spectrogram[i] / 2;   // FIXME: divide by 2 because of current Hanning windowing
     }
     PRINTF("\n");
 
@@ -772,11 +744,36 @@ void denoiser(void)
 
 
     // copy input data to L3
-    pi_ram_read(&HyperRam, outSig,   __PREFIX(_L2_Memory), num_samples * sizeof(short));
+    out_temp_buffer = (short int * ) __PREFIX(_L2_Memory); 
+    pi_ram_read(&HyperRam, outSig,   out_temp_buffer, num_samples * sizeof(short));
     
+#ifdef CHECKSUM
+    short int * in_temp_buffer = ((short int * ) __PREFIX(_L2_Memory)) + num_samples;
+    pi_ram_read(&HyperRam, inSig,   in_temp_buffer, num_samples * sizeof(short));
 
-    // final sample 
-    out_temp_buffer = (short int * ) __PREFIX(_L2_Memory);
+    p_err = 0.0f; p_sig=0.0f;
+    for (int i = 0; i< num_samples; i++ ){   // remove first and last elements from checksum
+        float in_signal = ((float) in_temp_buffer[i] )/(1<<15);
+        float out_signal = ((float) out_temp_buffer[i] )/(1<<15);
+        float err = in_signal - out_signal; 
+        p_err += (err * err);
+        p_sig += (in_signal * in_signal);
+
+    }
+    printf("Completed the checksum check over %d samples\n", num_samples);
+    if (p_err == 0.0)
+        snr = 1000000.0f;
+    else
+        snr = p_sig / p_err;
+    printf("ISTFT Signal-to-noise ratio in linear scale: %f\n", snr);
+    if (snr > 1000.0f)     // qsnr > 30db
+        printf("--> STFT+iSTFT OK!\n");
+    else
+        printf("--> STFT+iSTFT NOK!\n");
+
+
+#else
+    // final sample
     PRINTF("\nAudio Out: ");
     for (int i= 0 ; i<num_samples; i++){
         PRINTF("%f, ", ((float) out_temp_buffer[i] )/(1<<15)  );
@@ -786,6 +783,7 @@ void denoiser(void)
     WriteWavToFile("test_gap.wav", 16, 16000, 1, 
         (uint32_t *) __PREFIX(_L2_Memory), num_samples* sizeof(short));
     printf("Writing wav file to test_gap.wav completed successfully\n");
+#endif
 
     pi_l2_free(__PREFIX(_L2_Memory),denoiser_L2_SIZE);
 #endif

@@ -43,7 +43,7 @@ int main(int argc, char **argv)
       0,          // ctrl
       1,          // all the frames
       N_FFT,      // Nfft
-      1,          // InvertWindow, bypassed and manually inserted
+      0,          // InvertWindow, bypassed and manually inserted
       FLOAT16     // datatype
     );
 
