@@ -1,9 +1,6 @@
 import numpy as np
 import librosa
 import sys, os
-import pickle
-import copy 
-from pathlib import Path
 
 #import nntool 
 from nntool.execution.graph_executer import GraphExecuter
@@ -47,7 +44,7 @@ print('The calibration samples are taken from: ', quant_sample_path)
 # parameters
 SR = 16000
 use_ema = False
-lstm_hidden_states = 256
+lstm_hidden_states = h_state_len
 
 # defines
 executer = GraphExecuter(G, qrecs=None)

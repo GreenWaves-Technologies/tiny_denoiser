@@ -52,6 +52,7 @@ endif
 # FP16=float16, BFP16 = float16alt
 QUANT_BITS?=FP16
 GRU?=0
+H_STATE_LEN?=256
 
 SILENT?=1
 DEBUG?=0

@@ -4,11 +4,11 @@ import sys, os
 import pickle
 
 #import nntool 
-from interpreter.nntool_shell import NNToolShell
-from execution.graph_executer import GraphExecuter
-from stats.activation_ranges_collector import ActivationRangesCollector
-from quantization.quantizer.new_quantizer import NewQuantizer
-from graph.matches.matchers.remove_unnecessary_quantize_operators import RemoveUnnecessaryQuantizeOperators
+from nntool.interpreter.nntool_shell import NNToolShell
+from nntool.execution.graph_executer import GraphExecuter
+from nntool.stats.activation_ranges_collector import ActivationRangesCollector
+from nntool.quantization.quantizer.new_quantizer import NewQuantizer
+from nntool.graph.matches.matchers.remove_unnecessary_quantize_operators import RemoveUnnecessaryQuantizeOperators
 
 # collect statistics
 from cmd2 import Cmd2ArgumentParser, with_argparser

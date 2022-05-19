@@ -6,9 +6,10 @@ nodeoption GRU_74 RNN_STATES_AS_INPUTS 1
 nodeoption GRU_136 RNN_STATES_AS_INPUTS 1
 show
 
-run_pyscript model/nntool_scripts/collect_stats.py samples/quant/ 8 $(GRU) $(MODEL_BUILD)/
-aquant --stats $(MODEL_BUILD)/data_quant.json
-#aquant --stats /home/manuele/Work/GWT_apps/denoiser_fp/model/data_quant_8_gru.json
+run_pyscript model/nntool_scripts/collect_stats.py samples/quant/ 8 $(GRU) $(MODEL_BUILD)/ $(H_STATE_LEN)
+#run_pyscript model/nntool_scripts/apply_quant.py samples/quant/ 8 $(GRU) $(MODEL_BUILD)/
+aquant --stats $(MODEL_BUILD)/data_quant.json 
+
 
 qshow
 
