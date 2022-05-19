@@ -52,7 +52,8 @@ def denoise_sample_on_gap_gvsoc(input_file, output_file, samplerate, padding = F
     return 0
 
 def nntool_get_model(model_onnx, gru, real, quant_fp16,  quant_bfp16, quant_int8, 
-                    quant_ne16, ne_16_type, quant_stats_file=None, clip_type=None, max_rnn=False, linear_fp16=False):
+                    quant_ne16, ne_16_type, quant_stats_file=None, clip_type=None, 
+                    max_rnn=False, linear_fp16=False):
     # nntool
     sys.path.insert(0, os.environ['NNTOOL_DIR'])
     from nntool.api import NNGraph
@@ -71,28 +72,18 @@ def nntool_get_model(model_onnx, gru, real, quant_fp16,  quant_bfp16, quant_int8
         model["GRU_74"].set_states_as_inputs(model)
         model["GRU_136"].set_states_as_inputs(model)
     else:
-        model["LSTM_75"].set_states_as_inputs(model)
-        model["LSTM_75"].set_c_state_as_output(model)
-        model["LSTM_141"].set_states_as_inputs(model)
-        model["LSTM_141"].set_c_state_as_output(model)
+        model["LSTM_78"].set_states_as_inputs(model)
+        model["LSTM_78"].set_c_state_as_output(model)
+        model["LSTM_144"].set_states_as_inputs(model)
+        model["LSTM_144"].set_c_state_as_output(model)
     
     astats = None
     if quant_ne16 or quant_int8:
-        print('Loading weihts from: ', quant_stats_file)
-        # change this with other script...
+        print('Loading parameters from: ', quant_stats_file)
         import pickle
-    #            fp = open('model/data_quant_gru.json', 'rb')
         fp = open(quant_stats_file, 'rb')
         astats = pickle.load(fp)
         fp.close()
-        
-        for item in astats:
-            #print(astats[item])
-            pass
-        #print(astats['Conv_0_fusion']['range_in'])
-        #for item in astats['Conv_0_fusion']['range_in']:
-        #    print(item.keys())
-        #exit(0)        
         
         graph_options ={}
         node_options = {}
@@ -100,12 +91,6 @@ def nntool_get_model(model_onnx, gru, real, quant_fp16,  quant_bfp16, quant_int8
             scheme = ['scaled']
             graph_options = {
                 "use_ne16": False,
-#                "force_output_size":16,
-                #"force_external_size":8,
-                #"force_input_size":8,
-                #"force_output_size":8,
-#                "clip_type": "std5",
-#                "allow_asymmetric_out": True
             }
             
             if clip_type:
@@ -118,13 +103,13 @@ def nntool_get_model(model_onnx, gru, real, quant_fp16,  quant_bfp16, quant_int8
                     node_options["GRU_74"] = {"clip_type": "none" }
                     node_options["GRU_136"] = {"clip_type": "none" }
                 else:
-                    node_options["i_state_LSTM_75"] = {"clip_type": "none" }
-                    node_options["i_state_LSTM_141"] = {"clip_type": "none" }
-                    node_options["c_state_LSTM_75"] = {"clip_type": "none" }
-                    node_options["c_state_LSTM_141"] = {"clip_type": "none" }
+                    node_options["i_state_LSTM_78"] = {"clip_type": "none" }
+                    node_options["i_state_LSTM_144"] = {"clip_type": "none" }
+                    node_options["c_state_LSTM_78"] = {"clip_type": "none" }
+                    node_options["c_state_LSTM_144"] = {"clip_type": "none" }
                     
-                    node_options["LSTM_75"] = {"clip_type": "none" }
-                    node_options["LSTM_141"] = {"clip_type": "none" }
+                    node_options["LSTM_78"] = {"clip_type": "none" }
+                    node_options["LSTM_144"] = {"clip_type": "none" }
 
 
             if linear_fp16:
@@ -137,19 +122,7 @@ def nntool_get_model(model_onnx, gru, real, quant_fp16,  quant_bfp16, quant_int8
                     node_options["Conv_142_reshape_out"] = {"scheme": "float", "float_type": "float16"}
                     node_options["Sigmoid_143"] = {"scheme": "float", "float_type": "float16"}
                     node_options["output_1"] = {"scheme": "float", "float_type": "float16"}
-
-
                 else:
-                    '''
-                    node_options["input_1"] = {"scheme": "float", "float_type": "float16"}
-                    node_options["Conv_0_reshape_in"] = {"scheme": "float", "float_type": "float16"}
-                    node_options["Conv_0_fusion"] = {"scheme": "float", "float_type": "float16"}
-                    node_options["Conv_147_fusion"] = {"scheme": "float", "float_type": "float16"}
-                    node_options["Conv_150_fusion"] = {"scheme": "float", "float_type": "float16"}
-                    node_options["Conv_150_reshape_out"] = {"scheme": "float", "float_type": "float16"}
-                    node_options["Sigmoid_151"] = {"scheme": "float", "float_type": "float16"}
-                    node_options["output_1"] = {"scheme": "float", "float_type": "float16"}
-                    '''
                     node_options["input_1"] = {"scheme": "float", "float_type": "float16"}
                     node_options["Conv_0_reshape_in"] = {"scheme": "float", "float_type": "float16"}
                     node_options["Conv_0_fusion"] = {"scheme": "float", "float_type": "float16"}
@@ -164,8 +137,6 @@ def nntool_get_model(model_onnx, gru, real, quant_fp16,  quant_bfp16, quant_int8
             node_options = {}
             graph_options = {
                 "use_ne16": True,
-#                "clip_type": "std5",
-#                "allow_asymmetric_out": True
             }
             if ne_16_type == 'a8w8':
                 graph_options['force_external_size'] = 8
@@ -190,13 +161,13 @@ def nntool_get_model(model_onnx, gru, real, quant_fp16,  quant_bfp16, quant_int8
                     node_options["GRU_74"] = {"clip_type": "none" }
                     node_options["GRU_136"] = {"clip_type": "none" }
                 else:
-                    node_options["i_state_LSTM_75"] = {"clip_type": "none" }
-                    node_options["i_state_LSTM_141"] = {"clip_type": "none" }
-                    node_options["c_state_LSTM_75"] = {"clip_type": "none" }
-                    node_options["c_state_LSTM_141"] = {"clip_type": "none" }
+                    node_options["i_state_LSTM_78"] = {"clip_type": "none" }
+                    node_options["i_state_LSTM_144"] = {"clip_type": "none" }
+                    node_options["c_state_LSTM_78"] = {"clip_type": "none" }
+                    node_options["c_state_LSTM_144"] = {"clip_type": "none" }
                     
-                    node_options["LSTM_75"] = {"clip_type": "none" }
-                    node_options["LSTM_141"] = {"clip_type": "none" }
+                    node_options["LSTM_78"] = {"clip_type": "none" }
+                    node_options["LSTM_144"] = {"clip_type": "none" }
 
 
             if linear_fp16:
@@ -232,7 +203,7 @@ def nntool_get_model(model_onnx, gru, real, quant_fp16,  quant_bfp16, quant_int8
                         ['qtune --step GRU_74,GRU_136 force_external_size=8'])
                 else:
                     NNToolShell.run_commands_on_graph(G, 
-                        ['qtune --step LSTM_75,LSTM_141 force_external_size=8'])
+                        ['qtune --step LSTM_78,LSTM_144 force_external_size=8'])
 
     elif quant_fp16: # fp16
         
@@ -242,10 +213,7 @@ def nntool_get_model(model_onnx, gru, real, quant_fp16,  quant_bfp16, quant_int8
             "float_type" : 'float16'
         }
         node_options = {}
-        #NNToolShell.run_commands_on_graph(G, [ 
-        #    'fquant',
-        #    'qtune --step * scheme=float float_type=float16', 
-        #    'qshow'])
+
         
     print(model.show())
     if not real:
@@ -253,18 +221,7 @@ def nntool_get_model(model_onnx, gru, real, quant_fp16,  quant_bfp16, quant_int8
             astats,
             schemes=scheme, # Schemes present in the graph
             graph_options = graph_options,
-    #        graph_options={
-    #            "use_ne16": True,
-    #            "hwc": False,
-    #            "force_output_size": 16,
-    #        }, # QUANT_OPTIONS applied graph-wise
             node_options=node_options,
-            #{
-            #    name_layer_2: {
-            #        "use_ne16": False,
-            #        "hwc": True
-            #    }
-            #}, # QUANT_OPTIONS applied layer-wise
         )
         
         print(model.qshow())
@@ -340,10 +297,6 @@ def nntool_inf(nntool_model, filenames, noisy_path, clean_path, estimate_path, r
                         data = [stft_clip_mag, rnn_0_i_state, rnn_0_c_state, rnn_1_i_state, rnn_1_c_state]
                         #data = [rnn_1_c_state, rnn_0_c_state, rnn_1_i_state, rnn_0_i_state, stft_clip_mag]
 
-                    #outputs = executer.execute(data, 
-                    #    qmode=QuantizationMode.all_dequantize() if not real else None, 
-                    #    silent=True)
-                    
                     if real:
                         outputs = nntool_model.execute(data)
                     else:
@@ -371,58 +324,31 @@ def nntool_inf(nntool_model, filenames, noisy_path, clean_path, estimate_path, r
                     
 
                     mag_out = outputs[nntool_model['output_1'].step_idx][0]
-                    
-                    #print('Mag Out')
-                    #print(np.squeeze(mag_out)) 
-                    
-                    #exit(0)
 
                     if gru == 1:
                         rnn_0_i_state = outputs[nntool_model['GRU_74'].step_idx][0]
                         rnn_1_i_state = outputs[nntool_model['GRU_136'].step_idx][0]
                     else:
-                        rnn_0_i_state = outputs[nntool_model['LSTM_75'].step_idx][0]
+                        rnn_0_i_state = outputs[nntool_model['LSTM_78'].step_idx][0]
                         rnn_0_c_state = outputs[nntool_model['output_2'].step_idx][0]
-                        rnn_1_i_state = outputs[nntool_model['LSTM_141'].step_idx][0]
+                        rnn_1_i_state = outputs[nntool_model['LSTM_144'].step_idx][0]
                         rnn_1_c_state = outputs[nntool_model['output_3'].step_idx][0]
 
 
-
-
-        #                    print('conv_0_out= ', conv_0_out.squeeze())
-        #                    print('rnn_0_i_state= ', rnn_0_i_state.squeeze())
-        #                    print('rnn_1_i_state= ', rnn_1_i_state.squeeze())
-        #                    print('mag_out= ', mag_out.squeeze())
-        #
-        #                ## this is for print values ####
-        #                    v = ''
-        #                    for item in rnn_1_i_state.squeeze():
-        #                        v += str(item) + ', '
-        #                    print(v)
-        #                ################################
-
-
-
                     stft_clip_mag_estimate = mag_out.squeeze()
-                    #stft_clip_mag_estimate = np.ones(257)
 
                     stft_clip = stft_clip * stft_clip_mag_estimate
                     stft_frame_o_T[i] = stft_clip
 
-        #                    if i>-1:
-        #                        exit(0)
-
 
                 stft_frame_o = np.transpose (stft_frame_o_T)
                 print('stft output shape:', stft_frame_o.shape)
-
 
                 data = librosa.istft(stft_frame_o, hop_length=win_inc, 
                     win_length=win_len, window='hann', center=False )
 
                 print('data output shape:', data.shape)
 
-                #print(np.mean((outputs1 - np.abs(librosa_stft))**2))
 
                 estimate = data[padding:] # place holder
             else:
@@ -538,262 +464,6 @@ def test_on_dset(   noisy_path, clean_path, n_threads, output_file, samplerate, 
     pesq = pesq_i / count
     stoi = stoi_i / count
     print("Test set performance:PESQ=\t", pesq, "\t STOI=\t", stoi, '\t over', count, 'samples')
-
-    exit(0)
-
-    # prepare nntool graph
-#    if nntool_model:
-    if False:
-        model_name = 'model/denoiser_GRU.onnx' if gru else 'model/denoiser.onnx'
-        G = NNToolShell.get_graph_from_commands([
-            'open ' + model_name + ' --use_lut_sigmoid --use_lut_tanh',
-            'adjust',
-            'fusions --scale8', ])
-
-        if gru:
-            NNToolShell.run_commands_on_graph(G, [
-                'nodeoption GRU_74 RNN_STATES_AS_INPUTS 1',
-                'nodeoption GRU_136 RNN_STATES_AS_INPUTS 1',
-            ])
-        else:
-            NNToolShell.run_commands_on_graph(G, [
-                'nodeoption LSTM_75 RNN_STATES_AS_INPUTS 1',
-                'nodeoption LSTM_75 LSTM_OUTPUT_C_STATE 1',
-                'nodeoption LSTM_141 RNN_STATES_AS_INPUTS 1',
-                'nodeoption LSTM_141 LSTM_OUTPUT_C_STATE 1',
-            ])    
-
-        if quant_ne16 or quant_int8:
-
-            # change this with other script...
-            import pickle
-#            fp = open('model/data_quant_gru.json', 'rb')
-            fp = open('BUILD_MODEL_8BIT/data_quant.json', 'rb')
-            astats = pickle.load(fp)
-            fp.close()
-            
-
-            Opts = { 'float_type': 'float32', 'kernel_type': 'fastfloat', 'hwc': False, 
-                     'sq_bits': 8,    
-                     'weight_bits': 8, 
-                     'force_external_size': 16, # 8
-                     'narrow_weights': True, 
-                     'use_ne16': True, # False
-                     'narrow_state': True, 
-                     'quantized_dimension': 'channel', 
-                     'force_ne16': False, 
-                     'allow_asymmetric': False, 
-                     'force_input_size': 16, # 8 
-                     'force_output_size': 16, #8 
-                     'softmax_out_8bits': False, 
-                     'bits': 16, 
-                     'pow2_biases': 0 
-                    }
-            if quant_int8: 
-                Opts['force_external_size'] = 8
-                Opts['use_ne16'] = False
-                Opts['force_input_size'] = 8
-                Opts['force_output_size'] = 8
-
-            if ne_16_type == 'a8w8':
-                Opts['force_external_size'] = 8
-                Opts['force_input_size'] = 8
-                Opts['force_output_size'] = 8
-
-
-            #quantizer = NewQuantizer(G, reset_all=True)
-            #quantizer.options = Opts
-            #quantizer.schemes.append('SQ8')
-            #quantizer.set_stats(astats)
-            #quantizer.quantize()
-            #G.add_dimensions()
-            
-            if quant_ne16: # adjust after NE16 = True
-                NNToolShell.run_commands_on_graph(G, ['adjust', 'fusions --scale8'])
-            
-            if ne_16_type == 'a16arnn8w8':
-                if gru:
-                    NNToolShell.run_commands_on_graph(G, 
-                        ['qtune --step GRU_74,GRU_136 force_external_size=8'])
-                else:
-                    NNToolShell.run_commands_on_graph(G, 
-                        ['qtune --step LSTM_75,LSTM_141 force_external_size=8'])
-
-            NNToolShell.run_commands_on_graph(G, [ 'qshow'])
-            print("The graph is QUANTIZED")
-
-
-        elif quant_fp16: # fp16
-            NNToolShell.run_commands_on_graph(G, [ 
-                'fquant',
-                'qtune --step * scheme=float float_type=float16', 
-                'qshow'])
-
-
-
-        # define the executed
-        if not real: 
-            executer = GraphExecuter(G, qrecs=G.quantization)
-        else:
-            executer = GraphExecuter(G, qrecs=None)
-    
-
-    
-    for i, file in enumerate(filenames):
-
-        # check first if the clean signal has been already produced
-        estimate_filepath = estimate_path + file + suffix_cleanfile + '.wav'
-        if os.path.isfile(estimate_filepath):
-            estimate, s = librosa.load(estimate_filepath, sr=samplerate)
-        else: # compute the estimate
-        
-            if nntool_model is not False:
-                # Get data
-                if os.path.isfile(output_file):
-                    os.remove(output_file)
-
-                input_file = noisy_path + file + '.wav'    
-    #            input_file = '/home/manuele/GWT_apps/denoiser/samples/quant/p286_035.wav'        
-                data, s = librosa.load(input_file, sr=samplerate)
-
-                print(input_file)
-
-                if padding:
-                    data = np.pad(data, (padding, padding))
-                    print(data)
-            
-                win_len = 400
-                win_inc = 100 
-                fft_len = 512
-#                print('data input shape:', data.shape)
-
-                stft_frame_i = librosa.stft(
-                    data, win_length=win_len, 
-                    n_fft=fft_len, hop_length=win_inc,
-                    window='hann', center=False)
-                fft_feat, num_win = stft_frame_i.shape
-#                print('stft input shape:', stft_frame_i.shape)
-
-
-                stft_frame_i_T = np.transpose (stft_frame_i) # swap the axis to select the tmestamp
-                stft_frame_o_T = np.empty_like(stft_frame_i_T)
-
-                rnn_0_i_state = np.zeros(256)
-                rnn_1_i_state = np.zeros(256)
-
-                if gru == 0:
-                    rnn_0_c_state = np.zeros(256)
-                    rnn_1_c_state = np.zeros(256)
-                
-
-                for i in range (num_win):
-#                    print('*****Frame ' + str(i) + ' ******')
-                    stft_clip = stft_frame_i_T[i]
-                    stft_clip_mag = np.abs(stft_clip)
-#                    print(stft_clip_mag)
-
-                    if gru == 1:
-                        data = [stft_clip_mag, rnn_0_i_state, rnn_1_i_state]
-                    else:
-                        data = [stft_clip_mag, rnn_0_i_state, rnn_0_c_state, rnn_1_i_state, rnn_1_c_state]
-                        #data = [rnn_1_c_state, rnn_0_c_state, rnn_1_i_state, rnn_0_i_state, stft_clip_mag]
-                    
-                    #outputs = executer.execute(data, 
-                    #    qmode=QuantizationMode.all_dequantize() if not real else None, 
-                    #    silent=True)
-
-                    outputs = nntool_model.execute(data, quantize=not real)
-
-                    mag_out = outputs[nntool_model['output_1'].step_idx][0]
-
-                    if gru == 1:
-                        rnn_0_i_state = outputs[nntool_model['GRU_74'].step_idx][0]
-                        rnn_1_i_state = outputs[nntool_model['GRU_136'].step_idx][0]
-                    else:
-                        rnn_0_i_state = outputs[nntool_model['LSTM_75'].step_idx][0]
-                        rnn_0_c_state = outputs[nntool_model['output_2'].step_idx][0]
-                        rnn_1_i_state = outputs[nntool_model['LSTM_141'].step_idx][0]
-                        rnn_1_c_state = outputs[nntool_model['output_3'].step_idx][0]
-
-
-
-
-#                    print('conv_0_out= ', conv_0_out.squeeze())
-#                    print('rnn_0_i_state= ', rnn_0_i_state.squeeze())
-#                    print('rnn_1_i_state= ', rnn_1_i_state.squeeze())
-#                    print('mag_out= ', mag_out.squeeze())
-#
-#                ## this is for print values ####
-#                    v = ''
-#                    for item in rnn_1_i_state.squeeze():
-#                        v += str(item) + ', '
-#                    print(v)
-#                ################################
-
-
-
-                    stft_clip_mag_estimate = mag_out.squeeze()
-                    #stft_clip_mag_estimate = np.ones(257)
-
-                    stft_clip = stft_clip * stft_clip_mag_estimate
-                    stft_frame_o_T[i] = stft_clip
-
-#                    if i>-1:
-#                        exit(0)
-
-
-                stft_frame_o = np.transpose (stft_frame_o_T)
-#                print('stft output shape:', stft_frame_o.shape)
-
-       
-                data = librosa.istft(stft_frame_o, hop_length=win_inc, 
-                    win_length=win_len, window='hann', center=False )
-                
-#                print('data output shape:', data.shape)
-
-                #print(np.mean((outputs1 - np.abs(librosa_stft))**2))
-                
-                estimate = data[padding:] # place holder
-            else:
-
-                input_file = noisy_path + file + '.wav'    
-
-                denoise_sample_on_gap_gvsoc(
-                    input_file, output_file, samplerate, 
-                    padding = padding, compile_GAP=compile_GAP, 
-                    gru=gru, quant_bfp16=quant_bfp16, 
-                    quant_int8=quant_int8, approx=approx
-                )
-
-                compile_GAP = False
-                estimate, s = librosa.load(output_file, sr=samplerate)
-                estimate = estimate[300:]
-
-            if suffix_cleanfile != '':
-                sf.write(estimate_filepath, estimate, samplerate)
-
-        # get the clean file
-        input_file = clean_path + file + '.wav'
-        clean_data, s = librosa.load(input_file, sr=samplerate)
-
-        # compute the metrics
-        sz0 = clean_data.shape[0]
-        sz1 = estimate.shape[0]
-        if sz0 > sz1:
-            estimate = np.pad(estimate, (0,sz0-sz1))
-        else:
-            estimate = estimate[:sz0]
-   
-        pesq_i, stoi_i =  _run_metrics(clean_data, estimate, samplerate)
-        print("Sample ", i,'\t', file,"\twith pesq=\t", pesq_i, "\tand stoi=\t", stoi_i )
-        total_cnt += 1
-        total_pesq += pesq_i
-        total_stoi += stoi_i
-
-
-    pesq = total_pesq / total_cnt
-    stoi = total_stoi / total_cnt
-    print("Test set performance:PESQ=\t", pesq, "\t STOI=\t", stoi)
 
 
 def get_pesq(ref_sig, out_sig, sr):
