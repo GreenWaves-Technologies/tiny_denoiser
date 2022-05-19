@@ -3,11 +3,11 @@ import librosa
 import sys, os
 
 #import nntool 
-from interpreter.nntool_shell import NNToolShell
-from execution.graph_executer import GraphExecuter
-from stats.activation_ranges_collector import ActivationRangesCollector
-from quantization.quantizer.new_quantizer import NewQuantizer
-from graph.matches.matchers.remove_unnecessary_quantize_operators import RemoveUnnecessaryQuantizeOperators
+from nntool.interpreter.nntool_shell import NNToolShell
+from nntool.execution.graph_executer import GraphExecuter
+from nntool.stats.activation_ranges_collector import ActivationRangesCollector
+from nntool.quantization.quantizer.new_quantizer import NewQuantizer
+from nntool.graph.matches.matchers.remove_unnecessary_quantize_operators import RemoveUnnecessaryQuantizeOperators
 
 import pickle
 
@@ -24,6 +24,8 @@ import pickle
 quant_sample_path = sys.argv[1]
 quantization_bits = sys.argv[2]
 gru = int(sys.argv[3])
+h_state_len = int(sys.argv[5])
+
 print(gru)
 
 path_model_build = sys.argv[4]
@@ -47,7 +49,7 @@ print('The calibration samples are taken from: ', quant_sample_path)
 # parameters
 SR = 16000
 use_ema = False
-lstm_hidden_states = 256
+lstm_hidden_states = h_state_len
 
 # defines
 executer = GraphExecuter(G, qrecs=None)
