@@ -462,13 +462,20 @@ def test_on_dset(   noisy_path, clean_path, estimate_path, n_threads, output_fil
 
     else:
 
-        results = []
+        results = [ 0 ]
+        pesq_i = 0
+        stoi_i = 0
+
         model_inference(False, quant_opt, filenames, 
             noisy_path, clean_path, estimate_path, results, 
             0, samplerate, padding, gru, h_state_len, dry)
-        pesq_i = results[0]
-        stoi_i = results[1]
-        count = len(results)
+
+        for item in results[0]:
+            print(item)
+            a, b = item
+            pesq_i += item[0]
+            stoi_i += item[1]
+        count = len(results[0])
 
 
     pesq = pesq_i / count
