@@ -15,6 +15,7 @@ make clean all run platform=gvsoc WAV_FILE=/<path_to_audio_file>/<file_name>.wav
 To denoise a wav file:
 ```
 python test_accuracy/test_GAP.py --mode sample --pad_input 300 --sample_rate 16000 --wav_input /<path_to_audio_file>/<file_name>.wav
+python test_accuracy/test_GAP.py --mode sample --pad_input 300 --sample_rate 16000 --wav_input samples/dataset/noisy/p232_050.wav --quant fp16mixed
 ```
 
 To test on dataset: 

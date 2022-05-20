@@ -13,25 +13,22 @@ from pystoi import stoi
 from threading import Thread
 
 def run_on_gap_gvsoc(input_file, output_file, compile=True, gru=False, 
-                quant_bfp16=False,  quant_int8=False, approx='' ):
-    runner_args = "" 
-    runner_args += " GRU=1" if gru else "" 
-    runner_args += " WAV_FILE="+input_file
-    runner_args += " QUANT_BITS=BFP16" if quant_bfp16 else " QUANT_BITS=8" if quant_int8 else ""
+                quant_opt='fp16' ):
+    runner_args  =  " SILENT=1 APP_MODE=1 CHECKSUM=0" 
+    runner_args +=  " GRU=1" if gru else "" 
+    runner_args +=  " WAV_FILE="+input_file
+    runner_args +=  " QUANT_BITS=FP16" if quant_opt=='fp16' else  " QUANT_BITS=8" if quant_opt=='int8' else " QUANT_BITS=FP16MIXED" if quant_opt=='fp16mixed' else ""
 
-    if approx == 'LUT':
-        runner_args += " APPROX_LUT=1"
-    
     if compile:
-        run_command = "make all run platform=gvsoc SILENT=1"+ runner_args
+        run_command = "make clean all run platform=gvsoc"+ runner_args
     else:
-        run_command = "make run platform=gvsoc SILENT=1"+ runner_args
+        run_command = "make all run platform=gvsoc"+ runner_args
     print("Going to run: ", run_command)
     os.system(run_command)
     return True
 
 def denoise_sample_on_gap_gvsoc(input_file, output_file, samplerate, padding = False, compile_GAP=True, 
-                    gru=False, quant_bfp16=False, quant_int8=False, approx=''):
+                    gru=False, quant_opt='fp16'):
 
     if os.path.isfile(output_file):
         os.remove(output_file)
@@ -43,8 +40,8 @@ def denoise_sample_on_gap_gvsoc(input_file, output_file, samplerate, padding = F
     file_name =  os.getcwd() + '/samples/test_py.wav'
     sf.write(file_name, data, samplerate)
     run_on_gap_gvsoc(file_name, output_file, compile=compile_GAP, 
-                    gru=gru, quant_bfp16=quant_bfp16, quant_int8=quant_int8, approx=approx)
-    shutil.copyfile('BUILD/GAP9_V2/GCC_RISCV_FREERTOS/test_gap.wav', output_file)
+                    gru=gru, quant_opt=quant_opt)
+    shutil.copyfile('BUILD/GAP9_V2/GCC_RISCV_FREERTOS//test_gap.wav', output_file)
     if not os.path.isfile(output_file):
         print("Error! not any output fiule produced")
         exit(0)
@@ -230,8 +227,12 @@ def nntool_get_model(model_onnx, gru, real, quant_fp16,  quant_bfp16, quant_int8
     return model
 
 
-def nntool_inf(nntool_model, filenames, noisy_path, clean_path, estimate_path, results, thread_id, samplerate, padding, gru, h_state_len, dry=0.0):
+def model_inference(nntool_model, quant_opt, filenames, noisy_path, clean_path, 
+        estimate_path, results, thread_id, 
+        samplerate, padding, gru, h_state_len, dry=0.0):
     from nntool.api.utils import qsnrs
+
+    compile_GAP = False     # switch to True to compile GAP at the first time
 
     metric=[]
     suffix_cleanfile = ''
@@ -358,8 +359,7 @@ def nntool_inf(nntool_model, filenames, noisy_path, clean_path, estimate_path, r
                 denoise_sample_on_gap_gvsoc(
                     input_file, output_file, samplerate, 
                     padding = padding, compile_GAP=compile_GAP, 
-                    gru=gru, quant_bfp16=quant_bfp16, 
-                    quant_int8=quant_int8, approx=approx
+                    gru=gru, quant_opt=quant_opt
                 )
 
                 compile_GAP = False
@@ -396,9 +396,8 @@ def nntool_inf(nntool_model, filenames, noisy_path, clean_path, estimate_path, r
     results[thread_id] = metric
 
 
-def test_on_dset(   noisy_path, clean_path, n_threads, output_file, samplerate, padding, 
-                    suffix_cleanfile, gru, real, quant_fp16,  quant_bfp16, quant_int8, 
-                    quant_ne16, ne_16_type, nntool_model, approx, h_state_len=256, dry=0.0  ):
+def test_on_dset(   noisy_path, clean_path, estimate_path, n_threads, output_file, samplerate, padding, 
+                    suffix_cleanfile, gru, nntool_model, quant_opt, approx, h_state_len=256, dry=0.0  ):
     
     # set noisy and clean path
     #noisy_path = dataset_path + '/noisy/'
@@ -411,7 +410,6 @@ def test_on_dset(   noisy_path, clean_path, n_threads, output_file, samplerate, 
         exit(1)
 
     # create a folder with the estimate
-    estimate_path = '/home0/manuele/Work/audio/GAP_projects/denoiser/samples/dataset/estimate/'
     if suffix_cleanfile != '':
         if not os.path.exists(estimate_path):
             os.makedirs(estimate_path)
@@ -421,45 +419,57 @@ def test_on_dset(   noisy_path, clean_path, n_threads, output_file, samplerate, 
     total_stoi = 0
     total_cnt = 0
 
-    # utils
-    compile_GAP = True
-    
-    # Fork ot each thread the computation of part of input_
-    n_threads = n_threads
-    batch_size = len(filenames)
-    chunk_size = int( batch_size / n_threads )
-    print('Numbers of file is: ', len(filenames), ' and chuck size: ', chunk_size)    
-    
-    results = [0 for x in range(n_threads)]
-    threads = [0 for x in range(n_threads)]
+    if nntool_model:
 
-    for thread_id in range(n_threads):
-        first = thread_id * chunk_size
-        last = min(first + chunk_size, batch_size)
-        if (thread_id == n_threads-1):
-            last = batch_size
-        idxs = list(range(first, last))
-        filenames_th = [filenames[x] for x in range(first, last)]
-        print(filenames_th)
-        threads[thread_id] = Thread(target=nntool_inf, args=(nntool_model, filenames_th, noisy_path, clean_path, estimate_path, results, thread_id, samplerate, padding, gru, h_state_len, dry))
-        threads[thread_id].start()
+        # Fork ot each thread the computation of part of input_
+        n_threads = n_threads
+        batch_size = len(filenames)
+        chunk_size = int( batch_size / n_threads )
+        print('Numbers of file is: ', len(filenames), ' and chuck size: ', chunk_size)    
+        
+        results = [0 for x in range(n_threads)]
+        threads = [0 for x in range(n_threads)]
+
+        for thread_id in range(n_threads):
+            first = thread_id * chunk_size
+            last = min(first + chunk_size, batch_size)
+            if (thread_id == n_threads-1):
+                last = batch_size
+            idxs = list(range(first, last))
+            filenames_th = [filenames[x] for x in range(first, last)]
+            print(filenames_th)
+            threads[thread_id] = Thread(target=model_inference, args=(nntool_model, quant_opt, 
+                filenames_th, noisy_path, clean_path, estimate_path, results, thread_id, 
+                samplerate, padding, gru, h_state_len, dry))
+            threads[thread_id].start()
 
 
-    # Wait all the threads to complete and join the results
-    pesq_i = 0
-    stoi_i = 0
-    count = 0
-    for thread_id in range(n_threads):
-        threads[thread_id].join()
-        for item in results[thread_id]:
-            print(item)
-            a, b = item
-            print('Thread ', a, b)
-            pesq_i += item[0]
-            stoi_i += item[1]
-            
-        count += len(results[thread_id])
-        print('Thread {} returned {} results'.format(thread_id, len(results[thread_id])) )
+        # Wait all the threads to complete and join the results
+        pesq_i = 0
+        stoi_i = 0
+        count = 0
+        for thread_id in range(n_threads):
+            threads[thread_id].join()
+            for item in results[thread_id]:
+                print(item)
+                a, b = item
+                print('Thread ', a, b)
+                pesq_i += item[0]
+                stoi_i += item[1]
+                
+            count += len(results[thread_id])
+            print('Thread {} returned {} results'.format(thread_id, len(results[thread_id])) )
+
+    else:
+
+        results = []
+        model_inference(False, quant_opt, filenames, 
+            noisy_path, clean_path, estimate_path, results, 
+            0, samplerate, padding, gru, h_state_len, dry)
+        pesq_i = results[0]
+        stoi_i = results[1]
+        count = len(results)
+
 
     pesq = pesq_i / count
     stoi = stoi_i / count
@@ -500,59 +510,66 @@ def _run_metrics(clean, estimate, samplerate):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        'GAP denoiser',
-        description="Speech enhancement using TinyLSTM on GAP")
-    parser.add_argument('--sample_rate', default=16000, type=int, help='sample rate')
+        'GAP denoiser', description="Speech enhancement using TinyDenoiser on GAP")
+
+    #script mode
     parser.add_argument("--mode", type=str, default="test",
                         help="Choose between sample | test")
+    parser.add_argument('--nntool', action="store_true",
+                            help="Run inference on nntool. if False, run inference on GVSOC")
+    parser.add_argument('--n_threads', type=int, default=1,
+                        help="Number of threads for nntool inference")
+
+    # input/output configuration
     parser.add_argument("--wav_input", type=str, default="samples/p232_001.wav",
                         help="Path and filename of the input wav")
-    parser.add_argument("--noisy_dataset_path", type=str, default="samples/dataset/noisy/",
-                        help="Path of the dataset w/ subdirectories noisy")
-    parser.add_argument("--clean_dataset_path", type=str, default="samples/dataset/clean/",
-                        help="Path of the dataset w/ subdirectories clean")
+    parser.add_argument('--sample_rate', default=16000, type=int, help='sample rate')
     parser.add_argument('--pad_input', type=int, default=0,
                         help="Pad the input left/right: computed as FRAME_SIZE - FRAME_HOP")
     parser.add_argument("--wav_output", type=str, default="test_gap.wav",
                         help="Path and filename of the output wav")
     parser.add_argument("--suffix_clean", type=str, default='',
                         help="Suffix of the clean smaples in test mode. If empy no clean sample is stored")
-    parser.add_argument('--gru', action="store_true",
-                            help="Set GRU in case of a GRU model")
-    parser.add_argument("--quant", type=str, default="fp16",
-                        help="fp16 | bfp16 | int8 | ne16 | real")
-    parser.add_argument('--ne_16_type', type=str, default="a8w8",
-                        help="a16w8 | a8w8 | a16arnn8w8")
-    parser.add_argument('--nntool', action="store_true",
-                            help="Run inference on nntool. if False, run inference on GVSOC")
-    parser.add_argument("--approx", type=str, default='',
-                        help="Empty | LUT")
-    
+
+    # model selection
     parser.add_argument("--model_onnx", type=str, default="model/denoiser.onnx",
                         help="Path to the onnx model")
+    parser.add_argument('--gru', action="store_true",
+                            help="Set GRU in case of a GRU model")
+    parser.add_argument('--h_state_len', type=int, default=256,
+                        help="Number of states of the rnn hidden layers")    
+    # dataset path
+    parser.add_argument("--noisy_dataset_path", type=str, default="samples/dataset/noisy/",
+                        help="Path of the dataset w/ subdirectories noisy")
+    parser.add_argument("--clean_dataset_path", type=str, default="samples/dataset/clean/",
+                        help="Path of the dataset w/ subdirectories clean")
+    parser.add_argument("--estimate_path", type=str, default="samples/dataset/estimate/",
+                        help="Path of the dataset w/ subdirectories for estimate cleaned files")
+    
+    # quantization options
+    parser.add_argument("--quant", type=str, default="fp16",
+                        help="fp16 | fp16mixed | bfp16 | int8 | ne16 | real")
     parser.add_argument("--quant_stats_file", type=str, default="BUILD_MODEL_8BIT/data_quant.json",
                         help="Path to the quant stats file")
-    parser.add_argument('--n_threads', type=int, default=1,
-                        help="Number of threads for nntool inference")
+    parser.add_argument('--ne_16_type', type=str, default="a8w8",
+                        help="a16w8 | a8w8 | a16arnn8w8")
     parser.add_argument("--clip_type", type=str, default=None,
                         help="can be std3")    
     parser.add_argument("--max_rnn", action="store_true",
                         help="force rnn quantization to be max")    
     parser.add_argument("--linear_fp16", action="store_true",
                         help="force linear layer to be fp16")
-    parser.add_argument('--h_state_len', type=int, default=256,
-                        help="Number of states of the rnn hidden layers")    
+
+    parser.add_argument("--approx", type=str, default='',
+                        help="Empty | LUT")
     parser.add_argument('--dry', type=float, default=0.0,
                         help="Setting the dry parameter")  
     
     args = parser.parse_args()
     
-    print( args)
-    for arg in vars(args):
-        print (arg, '\t\t',getattr(args, arg))
 
     # parse the quantization method
-    real = fp16 = bfp16 = int8 = ne16 = False
+    real = fp16 = fp16mixed = bfp16 = int8 = ne16 = False
     ne_16_type = False
     if args.quant == 'real':
         real = True
@@ -571,6 +588,11 @@ if __name__ == "__main__":
             ne_16_type = 'a8w8'
         elif args.ne_16_type == 'a16arnn8w8':
             ne_16_type = 'a16arnn8w8'
+    elif args.quant == 'fp16mixed':
+        fp16mixed = True
+        args.clip_type = 'std3'
+        args.linear_fp16 = True
+        args.max_rnn = True
     
     # prepare nntool executer if needed
     if args.nntool:
@@ -583,10 +605,16 @@ if __name__ == "__main__":
     # call the test
     if args.mode == 'sample':
         print(args.pad_input)
-        denoise_sample_on_gap_gvsoc(args.wav_input, args.wav_output, args.sample_rate, args.pad_input)
+        #denoise_sample_on_gap_gvsoc(args.wav_input, args.wav_output, args.sample_rate, args.pad_input)
+        denoise_sample_on_gap_gvsoc(
+            args.wav_input, args.wav_output, args.sample_rate,
+            padding = args.pad_input, compile_GAP=False, 
+            gru=args.gru, quant_opt=args.quant
+        )
     elif args.mode == 'test':
-        test_on_dset(args.noisy_dataset_path,args.clean_dataset_path, args.n_threads, args.wav_output, args.sample_rate, args.pad_input, 
-            args.suffix_clean, args.gru, real, fp16, bfp16, int8, ne16, ne_16_type, nntool_model, args.approx, h_state_len=args.h_state_len, dry=args.dry)
+        test_on_dset(args.noisy_dataset_path,args.clean_dataset_path, args.estimate_path,
+            args.n_threads, args.wav_output, args.sample_rate, args.pad_input, 
+            args.suffix_clean, args.gru, nntool_model, args.quant, args.approx, h_state_len=args.h_state_len, dry=args.dry)
     else:
         print("Selected --mode is not supported!")
         exit(1)

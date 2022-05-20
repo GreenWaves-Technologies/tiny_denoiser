@@ -55,6 +55,7 @@ GRU?=0
 H_STATE_LEN?=256
 
 SILENT?=1
+CHECKSUM?=1
 DEBUG?=0
 DEBUG_STFT?=0
 
@@ -315,6 +316,10 @@ endif
 
 ifeq ($(SILENT), 1)
 	APP_CFLAGS += -DSILENT
+endif
+
+ifeq ($(CHECKSUM), 1)
+	APP_CFLAGS += -DCHECKSUM
 endif
 
 ifeq ($(DEBUG_STFT), 1)

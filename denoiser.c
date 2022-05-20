@@ -72,7 +72,7 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
                 >> skip STFT computation and use synthetic STFT matrix
         APPLY_DENOISER
 */
-#define CHECKSUM
+// #define CHECKSUM // defined by the Makefile
 
 #if IS_INPUT_STFT == 0 
 
@@ -421,15 +421,15 @@ void denoiser(void)
     }
 
     // Read audio from file
-    PRINTF("Reading wav from: %s \n", WavName);
+    printf("Reading wav from: %s \n", WavName);
     header_struct header_info;
       if (ReadWavFromFile(WavName,
             __PREFIX(_L2_Memory), AUDIO_BUFFER_SIZE*sizeof(short), &header_info)){
-        PRINTF("\nError reading wav file\n");
+        printf("\nError reading wav file\n");
         pmsis_exit(1);
     }
     int num_samples = header_info.DataSize * 8 / (header_info.NumChannels * header_info.BitsPerSample);
-    PRINTF("Num Samples: %d\n", num_samples);
+    printf("Num Samples: %d\n", num_samples);
     PRINTF("BitsPerSample: %d\n", header_info.BitsPerSample);
     printf("Finished Read wav.\n");
 
