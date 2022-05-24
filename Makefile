@@ -8,6 +8,7 @@ ifndef GAP_SDK_HOME
   $(error Source sourceme in gap_sdk first)
 endif
 
+include $(RULES_DIR)/pmsis_defs.mk
 
 ##############################################
 ############ Application Mode ################
@@ -15,25 +16,35 @@ endif
 # 1:	DenoiseWav: Input file Wav, Run Denoiser, Output file Wav
 # 2: 	DSPWav_test: Input file Wav, Run Denoiser but not NN, Check Output Wav
 # 3:  NN_Test: Input file STFT, Run NN Denoiser only, check NN Output
-APP_MODE?=3
+APP_MODE?=0
 ############################################## 
 # 0:	Demo
 ifeq ($(APP_MODE), 0)
+	OSPIRAM=1
 	IS_SFU=1 
+	IS_INPUT_FILE=0
 	IS_INPUT_STFT=0
 	DISABLE_NN_INFERENCE=0
+	APPLY_DENOISER=1
+
+
+	APP_SRCS   += $(TARGET_BUILD_DIR)/GraphINOUT_L2_Descr.c $(SFU_RUNTIME)/SFU_RT.c
+	APP_CFLAGS += -I$(TARGET_BUILD_DIR) -I$(SFU_RUNTIME)/include
+
 endif
 # 1:	DenoiseWav
 ifeq ($(APP_MODE), 1)
 	IS_SFU=0 
 	IS_INPUT_STFT=0
 	DISABLE_NN_INFERENCE=0
+	IS_INPUT_FILE=1
 endif
 # 2: 	DSPWav_test
 ifeq ($(APP_MODE), 2)
 	IS_SFU=0 
 	IS_INPUT_STFT=0
 	DISABLE_NN_INFERENCE=1
+	IS_INPUT_FILE=1
 	WAV_FILE?=$(CURDIR)/samples/dataset/noisy/p232_050.wav
 endif
 # 3:  NN_Test
@@ -41,6 +52,7 @@ ifeq ($(APP_MODE), 3)
 	IS_SFU=0 
 	IS_INPUT_STFT=1
 	DISABLE_NN_INFERENCE=0
+	IS_INPUT_FILE=1
 	STFT_FRAMES=1
 endif
 ############################################## 
@@ -55,7 +67,7 @@ GRU?=0
 H_STATE_LEN?=256
 
 SILENT?=1
-CHECKSUM?=1
+CHECKSUM?=0
 DEBUG?=0
 DEBUG_STFT?=0
 
@@ -164,6 +176,7 @@ AT_INPUT_HEIGHT=1
 ifeq '$(TARGET_CHIP)' 'GAP9_V2'
 	FREQ_CL?=370
 	FREQ_FC?=370
+	FREQ_SFU?=370
 
 	CLUSTER_STACK_SIZE=4096
 	CLUSTER_SLAVE_STACK_SIZE=2048
@@ -249,7 +262,7 @@ APP_SRCS += BUILD_MODEL_STFT/RFFTKernels.c
 
 #include paths
 APP_CFLAGS += -Icommon -I$(GAP_SDK_HOME)/libs/gap_lib/include/gaplib/
-APP_CFLAGS += -O3 -s -mno-memcpy -fno-tree-loop-distribute-patterns 
+APP_CFLAGS += -O2 -s -mno-memcpy -fno-tree-loop-distribute-patterns 
 
 
 
@@ -261,7 +274,7 @@ APP_CFLAGS += -Isamples
 #defines
 APP_CFLAGS += -DAT_MODEL_PREFIX=$(MODEL_PREFIX) $(MODEL_SIZE_CFLAGS)
 APP_CFLAGS += -DSTACK_SIZE=$(CLUSTER_STACK_SIZE) -DSLAVE_STACK_SIZE=$(CLUSTER_SLAVE_STACK_SIZE) 
-APP_CFLAGS += -DFREQ_FC=$(FREQ_FC) -DFREQ_CL=$(FREQ_CL)
+APP_CFLAGS += -DFREQ_FC=$(FREQ_FC) -DFREQ_CL=$(FREQ_CL) -DFREQ_SFU=$(FREQ_SFU) 
 APP_CFLAGS += -DAT_IMAGE=$(IMAGE) -DWAV_FILE=$(WAV_FILE) #-DWRITE_WAV #-DPRINT_AT_INPUT #-DPRINT_WAV 
 
 APP_LDFLAGS		+= -lm
@@ -281,6 +294,8 @@ APP_CFLAGS += -DSAMPLING_FREQ=$(SAMPLING_FREQ)
 APP_CFLAGS += -DAT_INPUT_WIDTH=$(AT_INPUT_WIDTH)
 APP_CFLAGS += -DAT_INPUT_HEIGHT=$(AT_INPUT_HEIGHT)
 APP_CFLAGS += -DMAX_L2_BUFFER=$(MODEL_L2_MEMORY)
+APP_CFLAGS += -DOSPIRAM=$(OSPIRAM)
+
 
 
 ifeq 	'$(QUANT_BITS)' 'FP16'
@@ -311,7 +326,7 @@ endif
 ifeq ($(platform), gvsoc)
 	APP_CFLAGS += -DPERF
 else
-	APP_CFLAGS += -DPERF #-DFROM_SENSOR -DSILENT
+	APP_CFLAGS += #-DPERF #-DFROM_SENSOR -DSILENT
 endif
 
 ifeq ($(SILENT), 1)
@@ -345,6 +360,13 @@ READFS_FILES=$(abspath $(MODEL_TENSORS))
 
 
 
+$(TARGET_BUILD_DIR)/GraphINOUT_L2_Descr.c: $(CURDIR)/Graph.src
+	mkdir -p $(@D)
+	cd $(@D) && SFU -i $(CURDIR)/Graph.src -C
+
+graph: $(TARGET_BUILD_DIR)/GraphINOUT_L2_Descr.c
+	
+
 generate_samples:
 	python utils/generate_samples_images.py --dct_coefficient_count $(DCT_COUNT) --window_size_ms $(FRAME_SIZE) --window_stride_ms $(FRAME_STEP)
 
@@ -355,14 +377,14 @@ test_accuracy_tflite:
 	python utils/test_accuracy_tflite.py --tflite_model $(TRAINED_TFLITE_MODEL) --dct_coefficient_count $(DCT_COUNT) --window_size_ms $(FRAME_SIZE) --window_stride_ms $(FRAME_STEP) --use_power_spectrogram $(USE_POWER)
 
 # all depends on the model
-all:: model gen_fft_code
+all:: | model gen_fft_code graph
 
 clean:: clean_model clean_fft_code
 	rm -rf BUILD_MODEL*
 
 include common/model_rules.mk
 
-$(info APP_SRCS... $(APP_SRCS))
-$(info APP_CFLAGS... $(APP_CFLAGS))
+# $(info APP_SRCS... $(APP_SRCS))
+# $(info APP_CFLAGS... $(APP_CFLAGS))
 
 include $(RULES_DIR)/pmsis_rules.mk

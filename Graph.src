@@ -1,0 +1,58 @@
+
+SFU_CreateGraph("GraphINOUT");
+
+Defines:
+    CIC_N = 8; CIC_M = 2; CIC_R = 64; CIC_Shift = 30;
+    /* CIC Filter parameters for Input 3.072 MHz, Output: 48 KHz, DynOut = N*Log2(R*M) = 8*Log2(128) = 56 => Shift = 24 for Q31, 31 for Q24 */
+
+
+Filters:
+    /* {CRFB_INT,   {B0,    B1,  B2,  B3,  B4, mB5,
+             mA0,  mA1, mA2, mA3, mA4,
+             mG0,   mG1,
+             PRS0, PRS1, LBS0, LBS1,
+             QP,   QN
+            }
+       }
+    */
+    Modulator_Lin = {CRFB_INT,  {5540,       70669,  458739,    2098672,    4665325, -8388608,
+                     -5540,     -70669, -458739,    -2098672,   -4665325,
+                     -4248414,  -1500259,
+                     -23, -23, -8, -8,
+                     0x2000000,     -0x2000000
+                    }
+            };
+            /* {F_LIMITER, {GSm0, GSm1, ESmU0, ESmU1, ESmD0, ESmD1, KLow, KUp, HC0, HC1, HC2, HC3, HC4, HC5}} */
+        Lim1 =
+        {
+            LIMITER,
+            {
+                8304722, 83885, // gain smooth
+                4194304, 4194304, // envelope smooth up
+                8367636, 20971, // envelope smooth down
+
+                // Knee 9dB
+                4996776, 14082828, // knee thresholds
+                8825263, -60131372, 165356217, -226595183, 138739640, 3282384 // knee coeffs
+            }
+        };
+
+Nodes:
+    In_1 = Node(PDM_IN, CIC_N, CIC_M, CIC_R, CIC_Shift);    // 3.072 MHZ Pdm In -> 48 KHz PCM out
+    graph_pdm_inout__Resampler_input = Node(RESAMPLER.0, -3, 0); // 48 KHz PCM -> 16 KHz PCM out
+    Out_1 = Node(MEM_OUT);
+
+    In1 = Node(MEM_IN);
+    graph_pdm_inout__Resampler_output = Node(RESAMPLER.1, 3, 0); // 16 KHz PCM -> 48 KHz PCM out
+    Out1 = Node(PDM_OUT, 4, Modulator_Lin); // 48 KHz PCM -> 3.072 MHZ Pdm Out
+
+Connects:
+    Connect(In1, graph_pdm_inout__Resampler_input);
+    Connect(graph_pdm_inout__Resampler_input, Out1);
+
+    Connect(In_1, graph_pdm_inout__Resampler_output);
+    Connect(graph_pdm_inout__Resampler_output, Out_1);
+
+SFU_CloseGraph();
+
+

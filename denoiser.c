@@ -33,7 +33,15 @@
 #endif
 
 // global struct
+#if OSPIRAM == 1
+struct pi_device OspiRam; 
+struct pi_device* ram = &OspiRam; 
+
+#else
 struct pi_device HyperRam; 
+struct pi_device* ram = &HyperRam;
+#endif
+
 AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 
 // board-dependent defines
@@ -298,15 +306,17 @@ DATATYPE_SIGNAL_INF * net_in_out = (DATATYPE_SIGNAL_INF * ) STFT_Magnitude;
 //#endif
 
     // apply denoising here: filter the STFT spectrogram with the mask in STFT_Magnitude
+    #ifdef PERF
     ta = gap_cl_readhwtimer();
+    #endif
     for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
         STFT_Spectrogram[2*i]    = STFT_Spectrogram[2*i]   * STFT_Magnitude[i];
         STFT_Spectrogram[2*i+1]  = STFT_Spectrogram[2*i+1] * STFT_Magnitude[i];
     }
+    #ifdef PERF
     ti = gap_cl_readhwtimer() - ta;
-
     PRINTF("%45s: Cycles: %10d\n","iScaling: ", ti );
-
+    #endif
 
 
 #ifdef GAPUINO
@@ -314,6 +324,92 @@ DATATYPE_SIGNAL_INF * net_in_out = (DATATYPE_SIGNAL_INF * ) STFT_Magnitude;
 #endif
 }
 
+
+#if IS_SFU == 1
+    
+
+#include "GraphINOUT_L2_Descr.h"
+#include "SFU_RT.h"
+
+#define BUFF_SIZE (FRAME_STEP*4)
+#define CHUNK_NUM (8)
+
+//This should be equal to FRAME_SIZE/FRAME_STEP + 1
+#define STRUCT_DELAY (5)
+
+#define SAI_ITF_IN         (1)
+#define SAI_ITF_OUT        (2)
+
+#define SAI_ID               (48)
+#define SAI_SCK(itf)         (48+(itf*4)+0)
+#define SAI_WS(itf)          (48+(itf*4)+1)
+#define SAI_SDI(itf)         (48+(itf*4)+2)
+#define SAI_SDO(itf)         (48+(itf*4)+3)
+
+SFU_uDMA_Channel_T *ChanOutCtxt_0;
+SFU_uDMA_Channel_T *ChanOutCtxt_1;
+SFU_uDMA_Channel_T *ChanInCtxt_0;
+SFU_uDMA_Channel_T *ChanInCtxt_1;
+
+void ** BufferInList;
+void ** BufferOutList;
+
+volatile int remaining_size;
+volatile int sent_size;
+volatile int done;
+int nb_transfers;
+int current_size[2];
+static pi_task_t proc_task;
+
+
+static int open_i2s_PDM(struct pi_device *i2s, unsigned int SAIn, unsigned int Frequency, unsigned int Polarity, unsigned int Diff)
+{
+    struct pi_i2s_conf i2s_conf;
+    pi_i2s_conf_init(&i2s_conf);
+
+    // polarity: b0: SDI: slave/master, b1:SDO: slave/master    1:RX, 0:TX
+    i2s_conf.options = PI_I2S_OPT_REF_CLK_FAST;
+    i2s_conf.frame_clk_freq = Frequency;                // In pdm mode, the frame_clk_freq = i2s_clk
+    i2s_conf.itf = SAIn;                                // Which sai interface
+    i2s_conf.format |= PI_I2S_FMT_DATA_FORMAT_PDM;      // Choose PDM mode
+    i2s_conf.pdm_polarity = Polarity;                   // 2b'11 slave on both SDI and SDO (SDO under test)
+    i2s_conf.pdm_diff = Diff;                           // Set differential mode on pairs (TX only)
+
+//    i2s_conf.options |= PI_I2S_OPT_EXT_CLK;             // Put I2S CLK in input mode for safety
+
+    pi_open_from_conf(i2s, &i2s_conf);
+
+    if (pi_i2s_open(i2s))
+        return -1;
+
+    pi_pad_set_function(SAI_SCK(SAIn),PI_PAD_FUNC0);
+    pi_pad_set_function(SAI_SDI(SAIn),PI_PAD_FUNC0);
+    pi_pad_set_function(SAI_SDO(SAIn),PI_PAD_FUNC0);
+    pi_pad_set_function(SAI_WS(SAIn),PI_PAD_FUNC0);
+
+    return 0;
+}
+
+static int chunk_in_cnt;
+
+
+
+static void handle_sfu_in_0_end(void *arg)
+{
+    
+    if(chunk_in_cnt==STRUCT_DELAY){
+        //pi_time_wait_us(5000);
+        SFU_Enqueue_uDMA_Channel_Multi(ChanOutCtxt_0, CHUNK_NUM, BufferOutList, BUFF_SIZE, 0);
+        SFU_GraphResetInputs(&SFU_RTD(GraphINOUT));
+    }
+
+        pi_task_push(&proc_task);
+
+}
+
+
+
+#endif
 
 
 static switch_file_t File = (switch_file_t) 0;
@@ -353,6 +449,77 @@ void denoiser(void)
     pi_gpio_pin_write(&gpio, GPIO_OUT, 0);
 #endif
 
+
+    #if IS_SFU == 1 
+
+    struct pi_device i2s_in;
+    struct pi_device i2s_out;
+    int Status;
+    int Trace = 0;
+    pi_task_block(&proc_task);
+
+    //int32_t* Audio_Frame = (int32_t*) pi_l2_malloc(FRAME_SIZE*sizeof(int32_t));
+    //if(Audio_Frame==NULL){
+    //    printf("Audio Frame Malloc Failed! Exit...\n");
+    //    pmsis_exit(-1);
+    //}
+
+    // Drive pad with 12 mAP to have less noise
+    uint32_t *Magic_Setting_0 = 0x1A104064;
+    *Magic_Setting_0 = 3 << 2 | 3 << 10 | 3 << 18 | 3 << 26;
+
+    // SAI 2 -> Drive pad with 12 mAP to have less noise
+    uint32_t *Magic_Setting = 0x1A104068;
+    *Magic_Setting = 3 << 10 | 3 << 18;
+    
+    //pi_task_block(&proc_task);
+    // Configure PDM in
+    if (open_i2s_PDM(&i2s_in, SAI_ITF_IN,   3072000, 3, 0)) return -1;
+    // Configure PDM out
+    if (open_i2s_PDM(&i2s_out, SAI_ITF_OUT, 3072000, 2, 1)) return -1;
+
+    StartSFU(FREQ_SFU*1000*1000, 1);
+
+    ChanInCtxt_0   = (SFU_uDMA_Channel_T *) pi_l2_malloc(sizeof(SFU_uDMA_Channel_T));
+    ChanOutCtxt_0  = (SFU_uDMA_Channel_T *) pi_l2_malloc(sizeof(SFU_uDMA_Channel_T));
+    
+    
+    BufferInList = (void*) pi_l2_malloc(sizeof(void*)*CHUNK_NUM);
+    for(int i=0;i<CHUNK_NUM;i++) BufferInList[i]=pi_l2_malloc(BUFF_SIZE);
+    
+    BufferOutList = (void*)pi_l2_malloc(sizeof(void*)*CHUNK_NUM);
+    for(int i=0;i<CHUNK_NUM;i++) BufferOutList[i]=pi_l2_malloc(BUFF_SIZE);;
+
+
+    // Get uDMA channels for GraphIN
+    SFU_Allocate_uDMA_Channel(ChanInCtxt_0, 0, &SFU_RTD(GraphINOUT));
+    SFU_uDMA_Channel_Callback(ChanInCtxt_0, handle_sfu_in_0_end, ChanInCtxt_0);
+    
+    // Get uDMA channels for GraphOUT
+    SFU_Allocate_uDMA_Channel(ChanOutCtxt_0, 0, &SFU_RTD(GraphINOUT));
+    //SFU_uDMA_Channel_Callback(ChanOutCtxt_0, handle_sfu_out_0_end, ChanOutCtxt_0);
+    
+    // Connect Channels to SFU for Mic IN (PDM IN)
+    SFU_GraphConnectIO(SFU_Name(GraphINOUT, In_1), SAI_ITF_IN, 2, &SFU_RTD(GraphINOUT));
+    SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out_1), ChanInCtxt_0->ChannelId, 0, &SFU_RTD(GraphINOUT));
+    
+
+    // Connect Channels to SFU for PDM OUT
+    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, In1), ChanOutCtxt_0->ChannelId, 0, &SFU_RTD(GraphINOUT));
+    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT, 0, &SFU_RTD(GraphINOUT));
+
+    //Next API will have a value to replace this high number with -1
+    //To be able to 
+    SFU_Enqueue_uDMA_Channel_Multi(ChanInCtxt_0, CHUNK_NUM, BufferInList, BUFF_SIZE, 0);
+
+            //Starting In and Out Graphs
+    pi_i2s_ioctl(&i2s_in, PI_I2S_IOCTL_START, NULL);
+    pi_i2s_ioctl(&i2s_out, PI_I2S_IOCTL_START, NULL);
+
+
+
+    #else
+
     /****
         Configure And Open the Hyperram. 
     ****/
@@ -364,7 +531,7 @@ void denoiser(void)
         printf("Error ram open !\n");
         pmsis_exit(-3);
     }
-
+    #endif
     /****
         Configure And open cluster. 
     ****/
@@ -400,14 +567,14 @@ void denoiser(void)
         Read Audio Data from file using __PREFIX(_L2_Memory) as temporary buffer
         Data are prepared in L3 external memory
     ****/
-
+    #if IS_INPUT_FILE == 1
     // allocate L2 Memory
     __PREFIX(_L2_Memory) = pi_l2_malloc(denoiser_L2_SIZE);
     if (__PREFIX(_L2_Memory) == 0) {
         printf("Error when allocating L2 buffer\n");
         pmsis_exit(18);        
     }
-
+    
     // Allocate L3 buffers for audio IN/OUT
     if (pi_ram_alloc(&HyperRam, &inSig, (uint32_t) AUDIO_BUFFER_SIZE))
     {
@@ -445,11 +612,12 @@ void denoiser(void)
 
     // free the temporary input memory
     pi_l2_free(__PREFIX(_L2_Memory),denoiser_L2_SIZE);
+    #endif
 
 #endif
 
 
-#ifndef DISABLE_NN_INFERENCE
+#if DISABLE_NN_INFERENCE == 0
     /******
         Setup Denoiser NN inference task (if enabled)
     ******/
@@ -495,6 +663,8 @@ void denoiser(void)
     Audio_Frame: includes only a single frame for audio
 ****/
 
+#if IS_INPUT_FILE == 1
+
     int tot_frames = (int) (((float)num_samples / FRAME_STEP) - NUM_FRAME_OVERLAP) ;
 //    tot_frames = 10; // debug purpose then remove
     printf("Number of frames to be processed: %d\n", tot_frames);
@@ -510,13 +680,42 @@ void denoiser(void)
             in_temp_buffer, 
             (uint32_t) FRAME_SIZE*sizeof(short)
         );
-
         // cast data from Q16.15 to DATATYPE_SIGNAL (may be float16)
         PRINTF("Audio In: ");
         for (int i= 0 ; i<FRAME_SIZE; i++){
             Audio_Frame[i] = ((DATATYPE_SIGNAL) in_temp_buffer[i] )/(1<<15);
             PRINTF("%f, ", Audio_Frame[i] );
         }
+#else
+
+
+    chunk_in_cnt=0;
+    SFU_StartGraph(&SFU_RTD(GraphINOUT));
+    while(1){
+        
+        pi_task_wait_on(&proc_task);
+
+        int round = (chunk_in_cnt%CHUNK_NUM);
+        int round_out = (chunk_in_cnt>(STRUCT_DELAY-1))? ((chunk_in_cnt-(STRUCT_DELAY-1))%CHUNK_NUM):0;
+
+        //First Copy previous loop processed frame to output
+        for(int i=0;i<BUFF_SIZE/4;i++) {
+            //((int32_t*)BufferOutList[round_out])[i]=Audio_Frame[i];
+            ((int32_t*)BufferOutList[round_out])[i]= (int32_t)((float)Audio_Frame[i]*((int)(1<<8)));
+        }
+
+        for(int i=0;i<FRAME_SIZE-FRAME_STEP;i++){
+            Audio_Frame[i] = Audio_Frame[i+FRAME_STEP];
+        }
+
+        for(int i=0;i<FRAME_STEP;i++){
+            Audio_Frame[i+FRAME_SIZE-FRAME_STEP] = ((float) ((int32_t*)BufferInList[round])[i]) /((int)(1<<8));
+            //Audio_Frame[i+FRAME_SIZE-FRAME_STEP] = ((int32_t*)BufferInList[round])[i] ;
+        }
+
+#endif
+
+
 
         /******
             MFCC Task
@@ -563,8 +762,10 @@ WAV_FILE?=$(CURDIR)/samples/sample_0000.wav
         printf("STFT Signal-to-noise ratio in linear scale: %f\n", snr);
         if (snr > 10000.0f)     // qsnr > 40db
             printf("--> STFT OK!\n");
-        else
+        else{
             printf("--> STFT NOK!\n");
+            pmsis_exit(-1);
+        }
 #endif
 */
     
@@ -668,8 +869,10 @@ WAV_FILE?=$(CURDIR)/samples/sample_0000.wav
         printf("Denoiser Signal-to-noise ratio in linear scale: %f\n", snr);
         if (snr > 90.0f)     // qsnr >~ 20db
             printf("--> Denoiser OK!\n");
-        else
+        else{
             printf("--> Denoiser NOK!\n");
+            pmsis_exit(-1);
+        }
     #endif
 #endif  // disable nn inference
 
@@ -692,7 +895,32 @@ WAV_FILE?=$(CURDIR)/samples/sample_0000.wav
     pmsis_l1_malloc_free(L1_Memory,_L1_Memory_SIZE);
 
 
-    // copy spectrogram into Audio Frames and print results
+    #ifdef CHECKSUM
+        //printf("Start the checksum check\n");
+
+        p_err = 0.0f; p_sig=0.0f;
+        for (int i = 10; i< FRAME_SIZE-10; i++ ){
+            float err = (float)(Audio_Frame[i] - STFT_Spectrogram[i]); 
+            p_err += (err * err);
+            p_sig += Audio_Frame[i] * Audio_Frame[i];
+
+        }
+        printf("Completed the checksum check\n");
+
+        if (p_err == 0.0f) 
+            snr = 1000000000.0f;
+        else
+            snr = p_sig / p_err;
+        printf("Denoiser Signal-to-noise ratio in linear scale: %f\n", snr);
+        if (snr > 1000.0f)     // qsnr > 30db
+            printf("--> STFT+iSTFT OK!\n");
+        else{
+            printf("--> STFT+iSTFT NOK!\n");
+            pmsis_exit(-1);
+        }
+    #endif
+
+    //copy spectrogram into Audio Frames and print results
     PRINTF("\nAudio Out: ");
     for (int i= 0 ; i<FRAME_SIZE; i++){
         PRINTF("%f, ", Audio_Frame[i] );
@@ -700,10 +928,18 @@ WAV_FILE?=$(CURDIR)/samples/sample_0000.wav
     }
     PRINTF("\n");
 
+
+
+        #if IS_SFU == 1
+        chunk_in_cnt++;
+        pi_task_block(&proc_task);
+
+        #endif
+
 #endif
 
 
-#if IS_INPUT_STFT == 0
+#if IS_INPUT_STFT == 0 && IS_INPUT_FILE == 1
 
         // if denoising auio files, outputs are loaded to the L3 output buffer outSig
         PRINTF("Writing Frame %d/%d to the output buffer\n\n", frame_id+1, tot_frames);
@@ -733,7 +969,7 @@ WAV_FILE?=$(CURDIR)/samples/sample_0000.wav
 
 
 // write reults to file: test_gap.wav
-#if IS_INPUT_STFT == 0
+#if IS_INPUT_STFT == 0 && IS_INPUT_FILE == 1
 
     // allocate L2 Memory
     __PREFIX(_L2_Memory) = pi_l2_malloc(denoiser_L2_SIZE);
