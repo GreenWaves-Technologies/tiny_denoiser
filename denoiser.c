@@ -516,7 +516,7 @@ void denoiser(void)
     pi_i2s_ioctl(&i2s_in, PI_I2S_IOCTL_START, NULL);
     pi_i2s_ioctl(&i2s_out, PI_I2S_IOCTL_START, NULL);
 
-
+    pi_time_wait_us(100000);
 
     #else
 
@@ -700,6 +700,8 @@ void denoiser(void)
 
         //First Copy previous loop processed frame to output
         for(int i=0;i<BUFF_SIZE/4;i++) {
+            //((int32_t*)BufferOutList[round_out])[i]=Audio_Frame[i];
+            //((int32_t*)BufferOutList[round_out])[i]= (int32_t)((float)Audio_Frame[i]*((int)(1<<24)));
             ((int32_t*)BufferOutList[round_out])[i]= (int32_t)((float)(Audio_Frame[i])*((int)(1<<8)));
         }
 
