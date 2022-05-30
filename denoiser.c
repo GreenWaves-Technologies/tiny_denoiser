@@ -919,12 +919,14 @@ WAV_FILE?=$(CURDIR)/samples/sample_0000.wav
     #endif
 
     //copy spectrogram into Audio Frames and print results
+#   ifndef DISABLE_NN_INFERENCE
     PRINTF("\nAudio Out: ");
     for (int i= 0 ; i<FRAME_SIZE; i++){
         PRINTF("%f, ", Audio_Frame[i] );
         Audio_Frame[i] = STFT_Spectrogram[i] / 2;   // FIXME: divide by 2 because of current Hanning windowing
     }
     PRINTF("\n");
+#   endif // DISABLE_NN_INFERENCE
 
 
 
