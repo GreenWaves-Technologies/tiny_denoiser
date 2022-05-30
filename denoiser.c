@@ -700,8 +700,7 @@ void denoiser(void)
 
         //First Copy previous loop processed frame to output
         for(int i=0;i<BUFF_SIZE/4;i++) {
-            //((int32_t*)BufferOutList[round_out])[i]=Audio_Frame[i];
-            ((int32_t*)BufferOutList[round_out])[i]= (int32_t)((float)Audio_Frame[i]*((int)(1<<8)));
+            ((int32_t*)BufferOutList[round_out])[i]= (int32_t)((float)(Audio_Frame[i])*((int)(1<<8)));
         }
 
         for(int i=0;i<FRAME_SIZE-FRAME_STEP;i++){
@@ -709,8 +708,7 @@ void denoiser(void)
         }
 
         for(int i=0;i<FRAME_STEP;i++){
-            Audio_Frame[i+FRAME_SIZE-FRAME_STEP] = ((float) ((int32_t*)BufferInList[round])[i]) /((int)(1<<8));
-            //Audio_Frame[i+FRAME_SIZE-FRAME_STEP] = ((int32_t*)BufferInList[round])[i] ;
+            Audio_Frame[i+FRAME_SIZE-FRAME_STEP] = (float16)(((float)((int32_t*)BufferInList[round])[i]) /((int)(1<<8)));
         }
 
 #endif
@@ -852,10 +850,8 @@ WAV_FILE?=$(CURDIR)/samples/sample_0000.wav
         }
     #endif  /* PERF */
 
-
         // Deassert Reset LSTM
         ResetLSTM = 0;
-
 
     #ifdef CHECKSUM
         p_err = 0.0f; p_sig=0.0f;
