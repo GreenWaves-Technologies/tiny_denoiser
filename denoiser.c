@@ -31,6 +31,8 @@
 #include "fs_switch.h"
 
 
+#define Q_BIT 29
+
 // macros for F16 sqrt
 #ifdef F16_DSP_BFLOAT
     #define SqrtF16(a) __builtin_pulp_f16altsqrt(a)
@@ -716,7 +718,7 @@ void denoiser(void)
 
         //First Copy previous loop processed frame to output
         for(int i=0;i<BUFF_SIZE/4;i++) {
-            ((int32_t*)BufferOutList[round_out])[i]= (int32_t)((float)(Audio_Frame_temp[i])*((int)(1<<24)));
+            ((int32_t*)BufferOutList[round_out])[i]= (int32_t)((float)(Audio_Frame_temp[i])*((int)(1<<Q_BIT)));
         }
 
 
@@ -726,7 +728,7 @@ void denoiser(void)
         }
 
         for(int i=0;i<FRAME_STEP;i++){
-            Audio_Frame[i+FRAME_SIZE-FRAME_STEP] = (DATATYPE_SIGNAL)(((float)((int32_t*)BufferInList[round])[i]) /((int)(1<<24)));
+            Audio_Frame[i+FRAME_SIZE-FRAME_STEP] = (DATATYPE_SIGNAL)(((float)((int32_t*)BufferInList[round])[i]) /((int)(1<<Q_BIT)));
             Audio_Frame_temp[i+FRAME_SIZE-FRAME_STEP] = (DATATYPE_SIGNAL) 0.0f;
         }
 
