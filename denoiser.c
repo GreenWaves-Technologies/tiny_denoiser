@@ -135,7 +135,12 @@ PI_L2 DATATYPE_SIGNAL Audio_Frame[FRAME_NFFT];  // stores the clip to compute th
 PI_L2 DATATYPE_SIGNAL STFT_Spectrogram[AT_INPUT_WIDTH*AT_INPUT_HEIGHT*2]; // the 2 is because of complex numbers
 PI_L2 DATATYPE_SIGNAL STFT_Magnitude[AT_INPUT_WIDTH*AT_INPUT_HEIGHT];     // magnitude of the precedent vectors, used as denoiser input and output
 
+#if IS_SFU == 1 
+PI_L2 DATATYPE_SIGNAL Audio_Frame_temp[FRAME_SIZE];
+#else 
 PI_L2 short int Audio_Frame_temp[FRAME_SIZE];
+#endif //IS_INPUT_STFT == 0 && IS_INPUT_FILE == 1
+
 PI_L2 int ResetLSTM;
 
 // RNN states statically allocated to preserve the values during time
@@ -557,7 +562,7 @@ void denoiser(void)
     /******
         Setup STFT/ISTF task
     ******/
-
+    printf("Setup STFT task!\n");
     struct pi_cluster_task* task_stft;
     task_stft = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
     pi_cluster_task(task_stft,&RunSTFT,NULL);
@@ -621,7 +626,7 @@ void denoiser(void)
 #   endif //IS_INPUT_STFT == 0 
 
 
-#   if DISABLE_NN_INFERENCE == 0
+#   ifndef DISABLE_NN_INFERENCE 
     /******
         Setup Denoiser NN inference task (if enabled)
     ******/
@@ -702,17 +707,18 @@ void denoiser(void)
 
         //First Copy previous loop processed frame to output
         for(int i=0;i<BUFF_SIZE/4;i++) {
-            //((int32_t*)BufferOutList[round_out])[i]=Audio_Frame[i];
-            //((int32_t*)BufferOutList[round_out])[i]= (int32_t)((float)Audio_Frame[i]*((int)(1<<24)));
-            ((int32_t*)BufferOutList[round_out])[i]= (int32_t)((float)(Audio_Frame[i])*((int)(1<<8)));
+            ((int32_t*)BufferOutList[round_out])[i]= (int32_t)((float)(Audio_Frame_temp[i])*((int)(1<<24)));
         }
+
 
         for(int i=0;i<FRAME_SIZE-FRAME_STEP;i++){
             Audio_Frame[i] = Audio_Frame[i+FRAME_STEP];
+            Audio_Frame_temp[i] = Audio_Frame_temp[i+FRAME_STEP];
         }
 
         for(int i=0;i<FRAME_STEP;i++){
-            Audio_Frame[i+FRAME_SIZE-FRAME_STEP] = (float16)(((float)((int32_t*)BufferInList[round])[i]) /((int)(1<<8)));
+            Audio_Frame[i+FRAME_SIZE-FRAME_STEP] = (DATATYPE_SIGNAL)(((float)((int32_t*)BufferInList[round])[i]) /((int)(1<<24)));
+            Audio_Frame_temp[i+FRAME_SIZE-FRAME_STEP] = (DATATYPE_SIGNAL) 0.0f;
         }
 
 #       endif //IS_INPUT_FILE == 1
@@ -921,14 +927,12 @@ void denoiser(void)
 #       endif //CHECKSUM
 
         //copy spectrogram into Audio Frames and print results
-#      ifndef DISABLE_NN_INFERENCE
         PRINTF("\nAudio Out: ");
         for (int i= 0 ; i<FRAME_SIZE; i++){
             PRINTF("%f, ", Audio_Frame[i] );
-            Audio_Frame[i] = STFT_Spectrogram[i] / 2;   // FIXME: divide by 2 because of current Hanning windowing
+            Audio_Frame_temp[i] += (STFT_Spectrogram[i] / 2 );   // FIXME: divide by 2 because of current Hanning windowing
         }
         PRINTF("\n");
-#      endif // DISABLE_NN_INFERENCE
 
 
 
