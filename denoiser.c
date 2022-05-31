@@ -51,11 +51,11 @@ struct pi_device* ram = &HyperRam;
 AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 
 // board-dependent defines
-#ifdef GAPUINO
-    struct pi_device gpio;
-    #define GPIO_OUT PI_GPIO_A1_PAD_13_B2 
-    #define NMAX_ITER 5
-    int iter = 0;
+#if IS_SFU == 1
+    struct pi_device gpio_port;
+    struct pi_device gpio_in;
+    pi_gpio_e gpio_pin_o; /* PI_GPIO_A02-PI_GPIO_A05 */
+    int val_gpio;
 #endif
 
 // datatype for computation
@@ -248,9 +248,6 @@ static void RunDenoiser()
     gap_cl_resethwtimer();
 #   endif
 
-#   ifdef GAPUINO
-    pi_gpio_pin_write(&gpio, GPIO_OUT, 1 );
-#   endif
 
 // casting from preprocessing datatype to NN datatype
     DATATYPE_SIGNAL_INF * net_in_out = (DATATYPE_SIGNAL_INF * ) STFT_Magnitude;
@@ -336,9 +333,7 @@ static void RunDenoiser()
 #   endif
 
 
-#   ifdef GAPUINO
-    pi_gpio_pin_write(&gpio, GPIO_OUT, 0);
-#   endif
+
 }
 
 
@@ -447,24 +442,29 @@ void denoiser(void)
         (float)voltage/1000, FREQ_FC, FREQ_CL);
 //    pulp_write32(0x1A10414C,1);   // what is this?
 
+    /****
+        Configure GPIO Output.
+    ****/
+    struct pi_gpio_conf gpio_conf = {0};
+//    gpio_pin_o = PI_GPIO_A89; /* PI_GPIO_A02-PI_GPIO_A05 */
+//    pi_pad_set_function(PI_PAD_089, PI_PAD_FUNC1);
 
-#   ifdef GAPUINO
-	//configuring gpio
-	struct pi_gpio_conf gpio_conf = {0};
+    gpio_pin_o = PI_GPIO_A68; /* PI_GPIO_A02-PI_GPIO_A05 */
+
+
     pi_gpio_conf_init(&gpio_conf);
-    pi_open_from_conf(&gpio, &gpio_conf);
-    int errors = pi_gpio_open(&gpio);
+    pi_open_from_conf(&gpio_port, &gpio_conf);
+    gpio_conf.port = (gpio_pin_o & PI_GPIO_NUM_MASK) / 32;
+    int errors = pi_gpio_open(&gpio_port);
     if (errors)
     {
-        PRINTF("Error opening GPIO %d\n", errors);
+        printf("Error opening GPIO %d\n", errors);
         pmsis_exit(errors);
     }
-    /* Configure gpio input. */
-    pi_gpio_pin_configure(&gpio, GPIO_OUT, PI_GPIO_OUTPUT);
-    pi_pad_set_function(PI_PAD_13_B2_RF_PACTRL1, PI_PAD_13_B2_GPIO_A1_FUNC1  );
+    pi_gpio_pin_configure(&gpio_port, gpio_pin_o, PI_GPIO_OUTPUT);
 
-    pi_gpio_pin_write(&gpio, GPIO_OUT, 0);
-#   endif
+
+
 
 
 #   if IS_SFU == 1 
@@ -711,6 +711,9 @@ void denoiser(void)
         
         pi_task_wait_on(&proc_task);
 
+        pi_gpio_pin_write(&gpio_port, gpio_pin_o, 1);
+
+
         int round = (chunk_in_cnt%CHUNK_NUM);
         int round_out = (chunk_in_cnt>(STRUCT_DELAY-1))? ((chunk_in_cnt-(STRUCT_DELAY-1))%CHUNK_NUM):0;
 
@@ -889,10 +892,16 @@ void denoiser(void)
             pmsis_exit(-1);
         }
 #       endif //CHECKSUM
+
+
+        pi_gpio_pin_write(&gpio_port, gpio_pin_o, 0);
+
 #       endif  // DISABLE_NN_INFERENCE
 
 
 #       if IS_INPUT_STFT == 0 // if not loading the STFT
+
+        pi_gpio_pin_write(&gpio_port, gpio_pin_o, 1);
 
         /******
             ISTF Task
@@ -946,6 +955,9 @@ void denoiser(void)
 
 
 #       if IS_SFU == 1
+
+        pi_gpio_pin_write(&gpio_port, gpio_pin_o, 0);
+
         chunk_in_cnt++;
         pi_task_block(&proc_task);
 #       endif
