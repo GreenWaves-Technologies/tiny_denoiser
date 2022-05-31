@@ -24,7 +24,7 @@ ifeq ($(APP_MODE), 0)
 	IS_SFU=1 
 	IS_INPUT_FILE=0
 	IS_INPUT_STFT=0
-	DISABLE_NN_INFERENCE=1
+	DISABLE_NN_INFERENCE=0
 
 
 	APP_SRCS   += $(TARGET_BUILD_DIR)/GraphINOUT_L2_Descr.c $(SFU_RUNTIME)/SFU_RT.c
@@ -77,7 +77,34 @@ OSPIRAM?=0
 
 
 NNTOOL_EXTRA_FLAGS =
-ifeq 		'$(QUANT_BITS)' '8'
+
+#############################################
+### 					Demo Settings
+#############################################
+ifeq ($(APP_MODE), 0)
+
+	QUANT_BITS=FP16
+	GRU=0
+	MODEL_PREFIX = denoiser_dns
+	MODEL_FP16=1
+	NNTOOL_EXTRA_FLAGS=--use_lut_sigmoid --use_lut_tanh
+	NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_demo
+
+endif 
+#############################################
+### 					Experiment Settings
+#############################################
+ifneq ($(APP_MODE), 0) 
+
+	# select model
+	ifeq ($(GRU), 0)
+		MODEL_PREFIX = denoiser
+	else
+		MODEL_PREFIX = denoiser_GRU
+	endif
+
+	# select quantization level 
+	ifeq 		'$(QUANT_BITS)' '8'
 	MODEL_SQ8=1
 	MODEL_FP16=1
 
@@ -121,36 +148,23 @@ else ifeq 	'$(QUANT_BITS)' 'FP16MIXED'
 		NNTOOL_SCRIPT=
 	endif
 
-
-
 else ifeq 	'$(QUANT_BITS)' 'BFP16'
+
 	NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_bfp16
 	MODEL_FP16=1
 	NNTOOL_EXTRA_FLAGS=--use_lut_sigmoid --use_lut_tanh
 
-
-
 else
 	$(error Quantization mode is not recognized. Choose among 8, 16, FP16 or NE16)
 endif
-
+endif
 
 ## Model Definition Parameters ##
 BUILD_DIR?=BUILD
-
 MODEL_SUFFIX = _$(QUANT_BITS)BIT
-
 MODEL_BUILD=BUILD_MODEL$(MODEL_SUFFIX)
-
 TRAINED_MODEL_PATH=model
-ifeq ($(GRU), 0)
-	MODEL_PREFIX = denoiser
-else
-	MODEL_PREFIX = denoiser_GRU
-endif
-
 TRAINED_MODEL = $(TRAINED_MODEL_PATH)/$(MODEL_PREFIX).onnx
-
 MODEL_PATH = $(MODEL_BUILD)/$(MODEL_PREFIX).onnx
 TENSORS_DIR = $(MODEL_BUILD)/tensors
 MODEL_TENSORS = $(MODEL_BUILD)/$(MODEL_PREFIX)_L3_Flash_Const.dat

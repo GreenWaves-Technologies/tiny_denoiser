@@ -16,8 +16,8 @@ qtune --step * scheme=float float_type=float16
 #set l3_ram_ext_managed true
 
 #set l3_flash_device AT_MEM_L3_MRAMFLASH
-set l3_flash_device AT_MEM_L3_OSPIFLASH
-set l3_ram_device AT_MEM_L3_OSPIRAM
+#set l3_flash_device AT_MEM_L3_OSPIFLASH
+#set l3_ram_device AT_MEM_L3_OSPIRAM
 
 set graph_reorder_constant_in true
 set graph_produce_node_names true

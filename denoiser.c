@@ -14,10 +14,16 @@
 
 // Autotiler NN functions
 #include "RFFTKernels.h"
+
+#if IS_SFU == 1
+    // demo configuration
+    #include "denoiser_dns.h"
+#else
 #ifdef GRU
     #include "denoiser_GRU.h"
 #else
-    #include "denoiser.h"
+    #include "denoiser_dns.h"
+#endif
 #endif
 
 // FS and Audio utils
@@ -66,6 +72,8 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
     #define DATATYPE_SIGNAL short
 #endif
 
+
+//#define PERF 1
 /*
     Configuration: 
         IS_INPUT_STFT := 0
@@ -319,8 +327,9 @@ static void RunDenoiser()
     for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
         STFT_Spectrogram[2*i]    = STFT_Spectrogram[2*i]   * STFT_Magnitude[i];
         STFT_Spectrogram[2*i+1]  = STFT_Spectrogram[2*i+1] * STFT_Magnitude[i];
-    }
-    
+        //STFT_Spectrogram[2*i]    = STFT_Spectrogram[2*i]   * 1.0f;
+        //STFT_Spectrogram[2*i+1]  = STFT_Spectrogram[2*i+1] * 1.0f;
+    }    
 #   ifdef PERF
     ti = gap_cl_readhwtimer() - ta;
     PRINTF("%45s: Cycles: %10d\n","iScaling: ", ti );
