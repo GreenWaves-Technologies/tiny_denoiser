@@ -24,12 +24,11 @@ ifeq ($(APP_MODE), 0)
 	IS_SFU=1 
 	IS_INPUT_FILE=0
 	IS_INPUT_STFT=0
-	DISABLE_NN_INFERENCE=0
-
+	#DISABLE_NN_INFERENCE=0
 
 	APP_SRCS   += $(TARGET_BUILD_DIR)/GraphINOUT_L2_Descr.c $(SFU_RUNTIME)/SFU_RT.c
 	APP_CFLAGS += -I$(TARGET_BUILD_DIR) -I$(SFU_RUNTIME)/include
-
+	io=uart
 endif
 # 1:	DenoiseWav
 ifeq ($(APP_MODE), 1)
@@ -37,6 +36,7 @@ ifeq ($(APP_MODE), 1)
 	IS_INPUT_STFT=0
 	DISABLE_NN_INFERENCE=0
 	IS_INPUT_FILE=1
+	io=host
 endif
 # 2: 	DSPWav_test
 ifeq ($(APP_MODE), 2)
@@ -45,6 +45,7 @@ ifeq ($(APP_MODE), 2)
 	DISABLE_NN_INFERENCE=1
 	IS_INPUT_FILE=1
 	WAV_FILE?=$(CURDIR)/samples/dataset/noisy/p232_050.wav
+	io=host
 endif
 # 3:  NN_Test
 ifeq ($(APP_MODE), 3)
@@ -53,6 +54,7 @@ ifeq ($(APP_MODE), 3)
 	DISABLE_NN_INFERENCE=0
 	IS_INPUT_FILE=1
 	STFT_FRAMES=1
+	io=host
 endif
 ############################################## 
 
@@ -254,9 +256,6 @@ CONFIG_SPIRAM = 1
 MODEL_L3_EXEC=qspiram
 MODEL_L3_CONST=qpsiflash
 endif
-
-
-io=host
 
 ## File Definition ##
 APP_SRCS += denoiser.c $(MODEL_GEN_C) $(MODEL_COMMON_SRCS) $(CNN_LIB) 
