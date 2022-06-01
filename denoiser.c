@@ -31,8 +31,8 @@
 #include "fs_switch.h"
 
 
-#define Q_BIT_IN 28
-#define Q_BIT_OUT 23
+#define Q_BIT_IN 27
+#define Q_BIT_OUT (Q_BIT_IN-4)
 
 // macros for F16 sqrt
 #ifdef F16_DSP_BFLOAT
