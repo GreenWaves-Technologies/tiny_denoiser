@@ -57,7 +57,36 @@ ifeq ($(APP_MODE), 3)
 	io=host
 endif
 ############################################## 
+FLASH_TYPE ?= DEFAULT
+RAM_TYPE   ?= DEFAULT
+#############################################
+### 					External Mem Settings
+#############################################
 
+ifeq '$(FLASH_TYPE)' 'HYPER'
+    MODEL_L3_FLASH=AT_MEM_L3_HFLASH
+else ifeq '$(FLASH_TYPE)' 'MRAM'
+    MODEL_L3_FLASH=AT_MEM_L3_MRAMFLASH
+    READFS_FLASH = target/chip/soc/mram
+    EXEC_FLASH=true
+else ifeq '$(FLASH_TYPE)' 'QSPI'
+    MODEL_L3_FLASH=AT_MEM_L3_QSPIFLASH
+    READFS_FLASH = target/board/devices/spiflash
+else ifeq '$(FLASH_TYPE)' 'OSPI'
+    MODEL_L3_FLASH=AT_MEM_L3_OSPIFLASH
+else ifeq '$(FLASH_TYPE)' 'DEFAULT'
+    MODEL_L3_FLASH=AT_MEM_L3_DEFAULTFLASH
+endif
+
+ifeq '$(RAM_TYPE)' 'HYPER'
+    MODEL_L3_RAM=AT_MEM_L3_HRAM
+else ifeq '$(RAM_TYPE)' 'QSPI'
+    MODEL_L3_RAM=AT_MEM_L3_QSPIRAM
+else ifeq '$(RAM_TYPE)' 'OSPI'
+    MODEL_L3_RAM=AT_MEM_L3_OSPIRAM
+else ifeq '$(RAM_TYPE)' 'DEFAULT'
+    MODEL_L3_RAM=AT_MEM_L3_DEFAULTRAM
+endif
 
 #quantization dependent features
 
@@ -156,6 +185,25 @@ else ifeq 	'$(QUANT_BITS)' 'BFP16'
 	MODEL_FP16=1
 	NNTOOL_EXTRA_FLAGS=--use_lut_sigmoid --use_lut_tanh
 
+
+
+
+#RAM_FLASH_TYPE ?= HYPER
+#
+#ifeq '$(RAM_FLASH_TYPE)' 'HYPER'
+#APP_CFLAGS += -DUSE_HYPER
+#CONFIG_HYPERRAM = 1
+#MODEL_L3_EXEC=hram
+#MODEL_L3_CONST=hflash
+#else
+#APP_CFLAGS += -DUSE_SPI
+#CONFIG_SPIRAM = 1
+#MODEL_L3_EXEC=qspiram
+#MODEL_L3_CONST=qpsiflash
+#endif
+
+
+
 else
 	$(error Quantization mode is not recognized. Choose among 8, 16, FP16 or NE16)
 endif
@@ -198,9 +246,7 @@ ifeq '$(TARGET_CHIP)' 'GAP9_V2'
 	CLUSTER_SLAVE_STACK_SIZE=2048
 	CLUSTER_NUM_CORES=8
 	TOTAL_STACK_SIZE=$(shell expr $(CLUSTER_STACK_SIZE) \+ $(CLUSTER_SLAVE_STACK_SIZE) \* $(CLUSTER_NUM_CORES))
-#	MODEL_L1_MEMORY=$(shell expr 120000 \- $(TOTAL_STACK_SIZE))
-	MODEL_L1_MEMORY=$(shell expr  50000 \- $(TOTAL_STACK_SIZE))
-#	MODEL_L2_MEMORY=1300000
+	MODEL_L1_MEMORY=$(shell expr 120000 \- $(TOTAL_STACK_SIZE))
 	MODEL_L2_MEMORY=1000000
 	MODEL_L3_MEMORY=8000000
 
@@ -242,43 +288,21 @@ include common/model_decl.mk
 include $(RULES_DIR)/at_common_decl.mk
 include stft_model.mk
 
-RAM_FLASH_TYPE ?= HYPER
+
 PMSIS_OS=freertos
 
-ifeq '$(RAM_FLASH_TYPE)' 'HYPER'
-APP_CFLAGS += -DUSE_HYPER
-CONFIG_HYPERRAM = 1
-MODEL_L3_EXEC=hram
-MODEL_L3_CONST=hflash
-else
-APP_CFLAGS += -DUSE_SPI
-CONFIG_SPIRAM = 1
-MODEL_L3_EXEC=qspiram
-MODEL_L3_CONST=qpsiflash
-endif
+
 
 ## File Definition ##
 APP_SRCS += denoiser.c $(MODEL_GEN_C) $(MODEL_COMMON_SRCS) $(CNN_LIB) 
 APP_SRCS += $(GAP_LIB_PATH)/wav_io/wavIO.c
-#APP_SRCS += BUILD_MODEL_STFT/MFCCKernels.c  
 APP_SRCS += BUILD_MODEL_STFT/RFFTKernels.c  
-#APP_SRCS += $(MFCC_KER_SRCS)
-#APP_SRCS += $(TILER_DSP_KERNEL_PATH)/LUT_Tables/TwiddlesDef.c 
-#APP_SRCS += $(TILER_DSP_KERNEL_PATH)/LUT_Tables/RFFTTwiddlesDef.c 
-#APP_SRCS += $(TILER_DSP_KERNEL_PATH)/LUT_Tables/SwapTablesDef.c
 
-#APP_SRCS += $(TILER_DSP_KERNEL_PATH)/MfccBasicKernels.c 
-#APP_SRCS += $(TILER_DSP_KERNEL_PATH)/FFT_Library.c 
-#APP_SRCS += $(TILER_DSP_KERNEL_PATH)/math_funcs.c
-#APP_SRCS += $(TILER_DSP_KERNEL_PATH)/CmplxFunctions.c 
-#APP_SRCS += $(TILER_DSP_KERNEL_PATH)/PreProcessing.c 
+#C flags
+APP_CFLAGS += -O2 -s -mno-memcpy -fno-tree-loop-distribute-patterns 
 
 #include paths
 APP_CFLAGS += -Icommon -I$(GAP_SDK_HOME)/libs/gap_lib/include/gaplib/
-APP_CFLAGS += -O2 -s -mno-memcpy -fno-tree-loop-distribute-patterns 
-
-
-
 APP_CFLAGS += -I. -I$(MODEL_COMMON_INC) -I$(TILER_EMU_INC) -I$(TILER_INC) -I$(MODEL_BUILD) $(CNN_LIB_INCLUDE)
 APP_CFLAGS += -I$(MFCC_GENERATOR) -I$(TILER_DSP_KERNEL_PATH) -I$(TILER_DSP_KERNEL_PATH)/LUT_Tables
 APP_CFLAGS += -IBUILD_MODEL_STFT
@@ -289,10 +313,6 @@ APP_CFLAGS += -DAT_MODEL_PREFIX=$(MODEL_PREFIX) $(MODEL_SIZE_CFLAGS)
 APP_CFLAGS += -DSTACK_SIZE=$(CLUSTER_STACK_SIZE) -DSLAVE_STACK_SIZE=$(CLUSTER_SLAVE_STACK_SIZE) 
 APP_CFLAGS += -DFREQ_FC=$(FREQ_FC) -DFREQ_CL=$(FREQ_CL) -DFREQ_SFU=$(FREQ_SFU) 
 APP_CFLAGS += -DAT_IMAGE=$(IMAGE) -DWAV_FILE=$(WAV_FILE) #-DWRITE_WAV #-DPRINT_AT_INPUT #-DPRINT_WAV 
-
-APP_LDFLAGS		+= -lm
-
-
 
 APP_CFLAGS += -DIS_SFU=$(IS_SFU)
 APP_CFLAGS += -DIS_AUDIO_FILE=$(IS_AUDIO_FILE)
@@ -310,6 +330,8 @@ APP_CFLAGS += -DAT_INPUT_HEIGHT=$(AT_INPUT_HEIGHT)
 APP_CFLAGS += -DMAX_L2_BUFFER=$(MODEL_L2_MEMORY)
 APP_CFLAGS += -DOSPIRAM=$(OSPIRAM)
 
+
+APP_LDFLAGS		+= -lm
 
 
 ifeq 	'$(QUANT_BITS)' 'FP16'
@@ -340,7 +362,7 @@ endif
 ifeq ($(platform), gvsoc)
 	APP_CFLAGS += -DPERF
 else
-	APP_CFLAGS += #-DPERF #-DFROM_SENSOR -DSILENT
+	APP_CFLAGS += -DPERF #-DFROM_SENSOR -DSILENT
 endif
 
 ifeq ($(SILENT), 1)

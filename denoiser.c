@@ -10,7 +10,7 @@
 // GAP Libraries and BSP
 #include "Gap.h"
 #include "bsp/ram.h"
-#include "bsp/ram/hyperram.h"
+//#include "bsp/ram/default_ram.h"
 
 // Autotiler NN functions
 #include "RFFTKernels.h"
@@ -22,13 +22,14 @@
 #ifdef GRU
     #include "denoiser_GRU.h"
 #else
-    #include "denoiser_dns.h"
+    #include "denoiser.h"
 #endif
 #endif
 
 // FS and Audio utils
 #include "wavIO.h" 
-#include "fs_switch.h"
+//#include "fs_switch.h"
+#include <bsp/fs/hostfs.h>
 
 
 #define Q_BIT_IN 27
@@ -42,24 +43,16 @@
 #endif
 
 // global struct
-#if OSPIRAM == 1
-struct pi_device OspiRam; 
-struct pi_device* ram = &OspiRam; 
+struct pi_device DefaultRam; 
+struct pi_device* ram = &DefaultRam;
 
-#else
-struct pi_device HyperRam; 
-struct pi_device* ram = &HyperRam;
-#endif
-
-AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
+AT_DEFAULTFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 
 // board-dependent defines
-#if IS_SFU == 1
-    struct pi_device gpio_port;
-    struct pi_device gpio_in;
-    pi_gpio_e gpio_pin_o; /* PI_GPIO_A02-PI_GPIO_A05 */
-    int val_gpio;
-#endif
+struct pi_device gpio_port;
+struct pi_device gpio_in;
+pi_gpio_e gpio_pin_o; /* PI_GPIO_A02-PI_GPIO_A05 */
+int val_gpio;
 
 // datatype for computation
 #if DTYPE == 0
@@ -427,8 +420,16 @@ static void handle_sfu_in_0_end(void *arg)
 #endif // IS_SFU == 1 
 
 
-static switch_file_t File = (switch_file_t) 0;
-static switch_fs_t fs;
+//static switch_file_t File = (switch_file_t) 0;
+//static switch_fs_t fs;
+
+static struct pi_default_flash_conf flash_conf;
+static pi_fs_file_t * file[1];
+static struct pi_device fs;
+static struct pi_device flash;
+
+
+
 
 void denoiser(void)
 {
@@ -445,26 +446,26 @@ void denoiser(void)
         (float)voltage/1000, FREQ_FC, FREQ_CL);
 //    pulp_write32(0x1A10414C,1);   // what is this?
 
-    /****
-        Configure GPIO Output.
-    ****/
-    struct pi_gpio_conf gpio_conf = {0};
-//    gpio_pin_o = PI_GPIO_A89; /* PI_GPIO_A02-PI_GPIO_A05 */
-//    pi_pad_set_function(PI_PAD_089, PI_PAD_FUNC1);
-
-    gpio_pin_o = PI_GPIO_A68; /* PI_GPIO_A02-PI_GPIO_A05 */
-
-
-    pi_gpio_conf_init(&gpio_conf);
-    pi_open_from_conf(&gpio_port, &gpio_conf);
-    gpio_conf.port = (gpio_pin_o & PI_GPIO_NUM_MASK) / 32;
-    int errors = pi_gpio_open(&gpio_port);
-    if (errors)
-    {
-        printf("Error opening GPIO %d\n", errors);
-        pmsis_exit(errors);
-    }
-    pi_gpio_pin_configure(&gpio_port, gpio_pin_o, PI_GPIO_OUTPUT);
+//    /****
+//        Configure GPIO Output.
+//    ****/
+//    struct pi_gpio_conf gpio_conf = {0};
+////    gpio_pin_o = PI_GPIO_A89; /* PI_GPIO_A02-PI_GPIO_A05 */
+////    pi_pad_set_function(PI_PAD_089, PI_PAD_FUNC1);
+//
+//    gpio_pin_o = PI_GPIO_A68; /* PI_GPIO_A02-PI_GPIO_A05 */
+//
+//
+//    pi_gpio_conf_init(&gpio_conf);
+//    pi_open_from_conf(&gpio_port, &gpio_conf);
+//    gpio_conf.port = (gpio_pin_o & PI_GPIO_NUM_MASK) / 32;
+//    int errors = pi_gpio_open(&gpio_port);
+//    if (errors)
+//    {
+//        printf("Error opening GPIO %d\n", errors);
+//        pmsis_exit(errors);
+//    }
+//    pi_gpio_pin_configure(&gpio_port, gpio_pin_o, PI_GPIO_OUTPUT);
 
 
 
@@ -541,12 +542,13 @@ void denoiser(void)
 #   else //IS_SFU == 1 
 
     /****
-        Configure And Open the Hyperram. 
+        Configure And Open the External Ram. 
     ****/
-    struct pi_hyperram_conf hyper_conf;
-    pi_hyperram_conf_init(&hyper_conf);
-    pi_open_from_conf(&HyperRam, &hyper_conf);
-    if (pi_ram_open(&HyperRam))
+    struct pi_default_ram_conf ram_conf;
+    pi_default_ram_conf_init(&ram_conf);
+    ram_conf.baudrate = FREQ_FC*1000*1000;
+    pi_open_from_conf(&DefaultRam, &ram_conf);
+    if (pi_ram_open(&DefaultRam))
     {
         printf("Error ram open !\n");
         pmsis_exit(-3);
@@ -596,12 +598,12 @@ void denoiser(void)
     }
     
     // Allocate L3 buffers for audio IN/OUT
-    if (pi_ram_alloc(&HyperRam, &inSig, (uint32_t) AUDIO_BUFFER_SIZE))
+    if (pi_ram_alloc(&DefaultRam, &inSig, (uint32_t) AUDIO_BUFFER_SIZE))
     {
         printf("inSig Ram malloc failed !\n");
         pmsis_exit(-4);
     }
-    if (pi_ram_alloc(&HyperRam, &outSig, (uint32_t) AUDIO_BUFFER_SIZE))
+    if (pi_ram_alloc(&DefaultRam, &outSig, (uint32_t) AUDIO_BUFFER_SIZE))
     {
         printf("outSig Ram malloc failed !\n");
         pmsis_exit(-5);
@@ -621,14 +623,14 @@ void denoiser(void)
     printf("Finished Read wav.\n");
 
     // copy input data to L3
-    pi_ram_write(&HyperRam, inSig,   __PREFIX(_L2_Memory), num_samples * sizeof(short));
+    pi_ram_write(&DefaultRam, inSig,   __PREFIX(_L2_Memory), num_samples * sizeof(short));
 
     // Reset Output Buffer and copy to L3
     short * out_temp_buffer = (short *) __PREFIX(_L2_Memory);
     for(int i=0; i < num_samples; i++){
         out_temp_buffer[i] = 0;
     }
-    pi_ram_write(&HyperRam, outSig,   __PREFIX(_L2_Memory), num_samples * sizeof(short));
+    pi_ram_write(&DefaultRam, outSig,   __PREFIX(_L2_Memory), num_samples * sizeof(short));
 
     // free the temporary input memory
     pi_l2_free(__PREFIX(_L2_Memory),denoiser_L2_SIZE);
@@ -695,7 +697,7 @@ void denoiser(void)
         // Copy Data from L3 to L2
         short * in_temp_buffer = (short *) Audio_Frame;
         pi_ram_read(
-            &HyperRam, 
+            &DefaultRam, 
             inSig + frame_id * FRAME_STEP * sizeof(short), 
             in_temp_buffer, 
             (uint32_t) FRAME_SIZE*sizeof(short)
@@ -797,7 +799,22 @@ void denoiser(void)
 
 
     // open FS and read the binary files with STFT (flaot values)
-    __FS_INIT(fs);
+   // __FS_INIT(fs);
+    struct pi_hostfs_conf conf;
+    pi_hostfs_conf_init(&conf);
+//    pi_default_flash_conf_init(&flash_conf);
+//    pi_open_from_conf(&flash, &flash_conf);
+//
+//    if (pi_flash_open(&flash))
+//        return -1;
+
+    conf.fs.flash = &flash;
+
+    pi_open_from_conf(&fs, &conf);
+
+
+    if (pi_fs_mount(&fs))
+        return -2;
 
     for(int frame_id = 0; frame_id<STFT_FRAMES; frame_id++){
 
@@ -805,20 +822,25 @@ void denoiser(void)
         sprintf(WavName, "../../../samples/mags_%.4d.bin",frame_id);
         printf("File being read is : %s\n", WavName);
 
-        File = __OPEN_READ(fs, WavName);
-        if (File == 0) {
+  //      File = __OPEN_READ(fs, WavName);
+        file[0] = pi_fs_open(&fs, WavName, 0);
+
+        if (file[0] == 0) {
             printf("Failed to open file, %s\n", WavName); 
             pmsis_exit(7);
         }
-        printf("File %x of size %d\n", File, sizeof(switch_file_t));
+        printf("File %x of size %d\n", file[0], sizeof(pi_fs_file_t));
 
         int TotBytes = sizeof(float)*AT_INPUT_WIDTH*AT_INPUT_HEIGHT;
-        int len = __READ(File, STFT_Spectrogram, TotBytes);
+        //int len = __READ(File, STFT_Spectrogram, TotBytes);
+        int len = pi_fs_read(file[0], STFT_Spectrogram, TotBytes);
+        printf("Here of len=%d of %d\n", len,TotBytes );
         if (len != TotBytes){
             printf("Too few bytes in %s\n", WavName); 
             pmsis_exit(8);
         } 
-        __CLOSE(File);
+        //__CLOSE(File);
+        pi_fs_close(file[0]);
 
         float * spectrogram_fp32 = (float *)STFT_Spectrogram;
         for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
@@ -973,14 +995,14 @@ void denoiser(void)
         PRINTF("Writing Frame %d/%d to the output buffer\n\n", frame_id+1, tot_frames);
 
         // Cast if needed
-        pi_ram_read(&HyperRam,  (short *) outSig + (frame_id*FRAME_STEP), 
+        pi_ram_read(&DefaultRam,  (short *) outSig + (frame_id*FRAME_STEP), 
             Audio_Frame_temp, FRAME_SIZE * sizeof(short));
 
         // from DATA_S
         for (int i= 0 ; i<FRAME_SIZE; i++){
             Audio_Frame_temp[i] += (short int)(Audio_Frame[i] * (1<<15));
         }
-        pi_ram_write(&HyperRam,  (short *) outSig + (frame_id*FRAME_STEP),   
+        pi_ram_write(&DefaultRam,  (short *) outSig + (frame_id*FRAME_STEP),   
             Audio_Frame_temp, FRAME_SIZE * sizeof(short));
 #       endif //IS_INPUT_STFT == 0 && IS_INPUT_FILE == 1
 
@@ -1006,11 +1028,11 @@ void denoiser(void)
 
     // copy input data to L3
     out_temp_buffer = (short int * ) __PREFIX(_L2_Memory); 
-    pi_ram_read(&HyperRam, outSig,   out_temp_buffer, num_samples * sizeof(short));
+    pi_ram_read(&DefaultRam, outSig,   out_temp_buffer, num_samples * sizeof(short));
     
 #   ifdef CHECKSUM
     short int * in_temp_buffer = ((short int * ) __PREFIX(_L2_Memory)) + num_samples;
-    pi_ram_read(&HyperRam, inSig,   in_temp_buffer, num_samples * sizeof(short));
+    pi_ram_read(&DefaultRam, inSig,   in_temp_buffer, num_samples * sizeof(short));
 
     p_err = 0.0f; p_sig=0.0f;
     for (int i = 0; i< num_samples; i++ ){   // remove first and last elements from checksum

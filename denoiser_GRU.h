@@ -20,7 +20,7 @@
 #define SCALE_IN denoiser_GRU_Input_1_OUT_SCALE
 #define SCALE_OUT denoiser_GRU_Output_1_OUT_SCALE
 
-extern AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash);
+extern AT_DEFAULTFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash);
 
 #ifdef SILENT
 # define PRINTF(...) ((void) 0)
