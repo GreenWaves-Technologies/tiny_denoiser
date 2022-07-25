@@ -1,4 +1,7 @@
-# TinyDenoiser on GAP
+# TinyDenoiser on GAP9
+
+This project demonstrates a Recurrent Neural Network (RNN) based method for Speech Enhamencement on GAP9.  
+The main loop of the application continuosly samples data from the microphone at 16kHz, applies the RNN filter and reconstruct the cleaned signal via overlap and add.
 
 
 
