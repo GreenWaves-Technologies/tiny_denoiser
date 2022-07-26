@@ -390,7 +390,7 @@ void denoiser(void)
     ******/
 
     struct pi_cluster_task* task_stft;
-    task_stft = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
+    task_stft = pi_l2_malloc(sizeof(struct pi_cluster_task));
     pi_cluster_task(task_stft,&RunSTFT,NULL);
     if (task_stft == NULL) {
         PRINTF("failed to allocate memory for task\n");
@@ -456,7 +456,7 @@ void denoiser(void)
     ******/
     printf("Setup Cluster Task for inference!\n");
     struct pi_cluster_task* task_net;
-    task_net = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
+    task_net = pi_l2_malloc(sizeof(struct pi_cluster_task));
     pi_cluster_task(task_net,&RunDenoiser,NULL);
     if(task_net==NULL) {
       PRINTF("pi_cluster_task alloc Error!\n");
@@ -526,14 +526,14 @@ void denoiser(void)
         PRINTF("\n\n****** Computing STFT ***** \n");
         pi_cluster_task(task_stft,&RunSTFT,NULL);
 
-        L1_Memory = pmsis_l1_malloc(_L1_Memory_SIZE);
+        L1_Memory = pi_l1_malloc(_L1_Memory_SIZE);
         if (L1_Memory==NULL){
             printf("Error allocating L1\n");
             pmsis_exit(-1);
         }
 
         pi_cluster_send_task_to_cl(&cluster_dev, task_stft);
-        pmsis_l1_malloc_free(L1_Memory,_L1_Memory_SIZE);
+        pi_l1_free(L1_Memory,_L1_Memory_SIZE);
 
         /***
             Check the Spectrogram Results
@@ -684,7 +684,7 @@ void denoiser(void)
     ******/
     PRINTF("\n\n****** Computing iSTFT ***** \n");
     pi_cluster_task(task_stft,&RuniSTFT,NULL);
-    L1_Memory = pmsis_l1_malloc(_L1_Memory_SIZE);
+    L1_Memory = pi_l1_malloc(_L1_Memory_SIZE);
     if (L1_Memory==NULL){
         printf("Error allocating L1\n");
         pmsis_exit(-1);
@@ -692,7 +692,7 @@ void denoiser(void)
 
     pi_cluster_send_task_to_cl(&cluster_dev, task_stft);
 
-    pmsis_l1_malloc_free(L1_Memory,_L1_Memory_SIZE);
+    pi_l1_free(L1_Memory,_L1_Memory_SIZE);
 
 
     #ifdef CHECKSUM
