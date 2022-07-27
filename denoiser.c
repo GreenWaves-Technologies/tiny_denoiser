@@ -21,7 +21,7 @@
 #endif
 
 // FS and Audio utils
-#include "wavIO.h" 
+#include "wavIO.h"
 #include "fs_switch.h"
 
 
@@ -33,13 +33,13 @@
 #endif
 
 // global struct
-struct pi_device HyperRam; 
+struct pi_device HyperRam;
 AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 
 // board-dependent defines
 #ifdef GAPUINO
     struct pi_device gpio;
-    #define GPIO_OUT PI_GPIO_A1_PAD_13_B2 
+    #define GPIO_OUT PI_GPIO_A1_PAD_13_B2
     #define NMAX_ITER 5
     int iter = 0;
 #endif
@@ -59,7 +59,7 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 #endif
 
 /*
-    Configuration: 
+    Configuration:
         IS_INPUT_STFT := 0
             IS_FAKE_SIGNAL_IN := 0
                 >> load input input wav file and compute STFT
@@ -74,7 +74,7 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 */
 #define CHECKSUM
 
-#if IS_INPUT_STFT == 0 
+#if IS_INPUT_STFT == 0
 
     //load the input audio signal and compute the STFT
     #ifdef __gap9__
@@ -89,7 +89,7 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
     #define AUDIO_BUFFER_SIZE (MAX_L2_BUFFER) // as big as the L2 autotiler
     char *WavName = NULL;
 
-    // L3 arrays to store input and output audio 
+    // L3 arrays to store input and output audio
     static uint32_t inSig;
     static uint32_t outSig;
 
@@ -120,7 +120,7 @@ AT_HYPERFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 #endif
 
 
-/* 
+/*
     static allocation of temporary buffers
 */
 PI_L2 DATATYPE_SIGNAL Audio_Frame[FRAME_NFFT];  // stores the clip to compute the STFT. only first FRAME_SIZE samples (<FRAME_NFFT) are valid
@@ -153,12 +153,12 @@ PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_1_C[RNN_STATE_DIM_1];
     #endif
         unsigned int ta = gap_cl_readhwtimer();
 
-        // compute the STFT 
+        // compute the STFT
         //      input: Audio Frame (FRAME_SIZE): 16 bits from the microphone or file
         //      output: STFT_Spectrogram, DATATYPE_SIGNAL as output (e.g. float16)
         STFT(
-            Audio_Frame, 
-            STFT_Spectrogram, 
+            Audio_Frame,
+            STFT_Spectrogram,
             TwiddlesLUT,
             RFFTTwiddlesLUT,
             SwapTable,
@@ -195,15 +195,15 @@ PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_1_C[RNN_STATE_DIM_1];
         unsigned int ta, ti;
 
 
-        // compute the iSTFT 
+        // compute the iSTFT
         //      input: STFT_Spectrogram: DATATYPE_SIGNAL
         //      output: STFT_Spectrogram, DATATYPE_SIGNAL - reusing the same buffer
         ta = gap_cl_readhwtimer();
         iSTFT(
-            STFT_Spectrogram, 
-            STFT_Spectrogram, 
-            TwiddlesLUT,   
-            RFFTTwiddlesLUT,   
+            STFT_Spectrogram,
+            STFT_Spectrogram,
+            TwiddlesLUT,
+            RFFTTwiddlesLUT,
             SwapTable,
             InvWindowLUT
         );
@@ -211,7 +211,7 @@ PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_1_C[RNN_STATE_DIM_1];
         PRINTF("%45s: Cycles: %10d\n","iSTFT: ", ti );
     }
 
-#endif  // end TF transformation 
+#endif  // end TF transformation
 
 
 /*
@@ -237,7 +237,7 @@ DATATYPE_SIGNAL_INF * net_in_out = (DATATYPE_SIGNAL_INF * ) STFT_Magnitude;
 #if DTYPE == 2
   // scale and quantize
   PRINTF("\nQuantized Inputs: ");
-  int temp ; 
+  int temp ;
   for(int i = 0 ; i<257; i++){
     temp  = (DATATYPE_SIGNAL_INF) ( (DATATYPE_SIGNAL) STFT_Magnitude[i] /  SCALE_IN);
     if (temp > 127) net_in_out[i] = 127;
@@ -249,7 +249,7 @@ DATATYPE_SIGNAL_INF * net_in_out = (DATATYPE_SIGNAL_INF * ) STFT_Magnitude;
 #endif
 
     /* Denoiser NN computation
-          input: STFT_Magnitude: DATATYPE_SIGNAL, 
+          input: STFT_Magnitude: DATATYPE_SIGNAL,
           output: STFT_Magnitude, DATATYPE_SIGNAL - reusing the same buffer
           states: RNN_STATE_0_I, RNN_STATE_0_C, RNN_STATE_1_I, RNN_STATE_1_C, must be preserved
           reset: only enabled at the start of the application
@@ -260,10 +260,10 @@ DATATYPE_SIGNAL_INF * net_in_out = (DATATYPE_SIGNAL_INF * ) STFT_Magnitude;
         RNN_STATE_0_C,
 #endif
         RNN_STATE_1_I,
-        RNN_STATE_0_I,        
-        STFT_Magnitude,  
-        ResetLSTM, 
-        ResetLSTM, 
+        RNN_STATE_0_I,
+        STFT_Magnitude,
+        ResetLSTM,
+        ResetLSTM,
         STFT_Magnitude
     );
 
@@ -279,7 +279,7 @@ DATATYPE_SIGNAL_INF * net_in_out = (DATATYPE_SIGNAL_INF * ) STFT_Magnitude;
 
 //    #define DATATYPE_SIGNAL     float16
 //    #define DATATYPE_SIGNAL_INF char
-//  
+//
 //  //scale the state
 //  for(int i = 0 ; i<257; i++){
 //    temp  = (DATATYPE_SIGNAL_INF) ( (DATATYPE_SIGNAL) LSTM_STATE_0_I[i] /  SCALE_IN);
@@ -331,7 +331,7 @@ void denoiser(void)
     pi_freq_set(PI_FREQ_DOMAIN_PERIPH,  FREQ_FC*1000*1000);
 
     //PMU_set_voltage(voltage, 0);
-    printf("Set VDD voltage as %.2f, FC Frequency as %d MHz, CL Frequency = %d MHz\n", 
+    printf("Set VDD voltage as %.2f, FC Frequency as %d MHz, CL Frequency = %d MHz\n",
         (float)voltage/1000, FREQ_FC, FREQ_CL);
 //    pulp_write32(0x1A10414C,1);   // what is this?
 
@@ -355,7 +355,7 @@ void denoiser(void)
 #endif
 
     /****
-        Configure And Open the Hyperram. 
+        Configure And Open the Hyperram.
     ****/
     struct pi_hyperram_conf hyper_conf;
     pi_hyperram_conf_init(&hyper_conf);
@@ -367,7 +367,7 @@ void denoiser(void)
     }
 
     /****
-        Configure And open cluster. 
+        Configure And open cluster.
     ****/
 
     struct pi_device cluster_dev;
@@ -383,14 +383,14 @@ void denoiser(void)
     pi_freq_set(PI_FREQ_DOMAIN_CL, FREQ_CL*1000*1000);
 
 
-#if IS_INPUT_STFT == 0 
+#if IS_INPUT_STFT == 0
 
     /******
         Setup STFT/ISTF task
     ******/
 
     struct pi_cluster_task* task_stft;
-    task_stft = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
+    task_stft = pi_l2_malloc(sizeof(struct pi_cluster_task));
     pi_cluster_task(task_stft,&RunSTFT,NULL);
     if (task_stft == NULL) {
         PRINTF("failed to allocate memory for task\n");
@@ -406,7 +406,7 @@ void denoiser(void)
     __PREFIX(_L2_Memory) = pi_l2_malloc(denoiser_L2_SIZE);
     if (__PREFIX(_L2_Memory) == 0) {
         printf("Error when allocating L2 buffer\n");
-        pmsis_exit(18);        
+        pmsis_exit(18);
     }
 
     // Allocate L3 buffers for audio IN/OUT
@@ -456,7 +456,7 @@ void denoiser(void)
     ******/
     printf("Setup Cluster Task for inference!\n");
     struct pi_cluster_task* task_net;
-    task_net = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
+    task_net = pi_l2_malloc(sizeof(struct pi_cluster_task));
     pi_cluster_task(task_net,&RunDenoiser,NULL);
     if(task_net==NULL) {
       PRINTF("pi_cluster_task alloc Error!\n");
@@ -464,7 +464,7 @@ void denoiser(void)
     }
     pi_cluster_task_stacks(task_net, NULL, SLAVE_STACK_SIZE);
     PRINTF("Stack size is %d and %d\n",STACK_SIZE,SLAVE_STACK_SIZE );
-    
+
     // Reset LSTM
     ResetLSTM = 1;
     for(int i=0; i<RNN_STATE_DIM_0; i++){
@@ -489,7 +489,7 @@ void denoiser(void)
 #endif // DISABLE_NN_INFERENCE
 
 
-#if IS_INPUT_STFT == 0 
+#if IS_INPUT_STFT == 0
 
 /****
     Load the input audio signal and compute the MFCC
@@ -501,14 +501,14 @@ void denoiser(void)
     printf("Number of frames to be processed: %d\n", tot_frames);
 
     for (int frame_id = 0; frame_id < tot_frames; frame_id++)
-    {   
+    {
         printf("***** Processing Frame %d of %d ***** \n", frame_id+1, tot_frames);
         // Copy Data from L3 to L2
         short * in_temp_buffer = (short *) Audio_Frame;
         pi_ram_read(
-            &HyperRam, 
-            inSig + frame_id * FRAME_STEP * sizeof(short), 
-            in_temp_buffer, 
+            &HyperRam,
+            inSig + frame_id * FRAME_STEP * sizeof(short),
+            in_temp_buffer,
             (uint32_t) FRAME_SIZE*sizeof(short)
         );
 
@@ -526,14 +526,14 @@ void denoiser(void)
         PRINTF("\n\n****** Computing STFT ***** \n");
         pi_cluster_task(task_stft,&RunSTFT,NULL);
 
-        L1_Memory = pmsis_l1_malloc(_L1_Memory_SIZE);
+        L1_Memory = pi_l1_malloc(&cluster_dev, _L1_Memory_SIZE);
         if (L1_Memory==NULL){
             printf("Error allocating L1\n");
             pmsis_exit(-1);
         }
 
         pi_cluster_send_task_to_cl(&cluster_dev, task_stft);
-        pmsis_l1_malloc_free(L1_Memory,_L1_Memory_SIZE);
+        pi_l1_free(&cluster_dev, L1_Memory,_L1_Memory_SIZE);
 
         /***
             Check the Spectrogram Results
@@ -553,7 +553,7 @@ void denoiser(void)
 
 #ifdef CHECKSUM
         for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-            float err = STFT_Magnitude[i] - STFT_Mag_Golden[i]; 
+            float err = STFT_Magnitude[i] - STFT_Mag_Golden[i];
             p_err += err * err;
             p_sig += STFT_Magnitude[i] * STFT_Magnitude[i];
         }
@@ -567,7 +567,7 @@ void denoiser(void)
         }
 #endif
 
-    
+
 
 #else ///load the STFT
 
@@ -583,7 +583,7 @@ void denoiser(void)
 
         File = __OPEN_READ(fs, WavName);
         if (File == 0) {
-            printf("Failed to open file, %s\n", WavName); 
+            printf("Failed to open file, %s\n", WavName);
             pmsis_exit(7);
         }
         printf("File %x of size %d\n", File, sizeof(switch_file_t));
@@ -591,9 +591,9 @@ void denoiser(void)
         int TotBytes = sizeof(float)*AT_INPUT_WIDTH*AT_INPUT_HEIGHT;
         int len = __READ(File, STFT_Spectrogram, TotBytes);
         if (len != TotBytes){
-            printf("Too few bytes in %s\n", WavName); 
+            printf("Too few bytes in %s\n", WavName);
             pmsis_exit(8);
-        } 
+        }
         __CLOSE(File);
 
         float * spectrogram_fp32 = (float *)STFT_Spectrogram;
@@ -640,8 +640,8 @@ void denoiser(void)
             unsigned int TotalCycles = 0, TotalOper = 0;
             printf("\n");
             for (int i=0; i<(sizeof(AT_GraphPerf)/sizeof(unsigned int)); i++) {
-                printf("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n", 
-                    AT_GraphNodeNames[i], AT_GraphPerf[i], AT_GraphOperInfosNames[i], 
+                printf("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n",
+                    AT_GraphNodeNames[i], AT_GraphPerf[i], AT_GraphOperInfosNames[i],
                     ((float) AT_GraphOperInfosNames[i])/ AT_GraphPerf[i]);
                 TotalCycles += AT_GraphPerf[i]; TotalOper += AT_GraphOperInfosNames[i];
             }
@@ -660,7 +660,7 @@ void denoiser(void)
         if(frame_id==STFT_FRAMES-1){
             p_err = 0.0f; p_sig=0.0f;
             for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-                float err = ((float) STFT_Magnitude[i]) - Denoiser_Golden[i]; 
+                float err = ((float) STFT_Magnitude[i]) - Denoiser_Golden[i];
                 p_err += err * err;
                 p_sig += STFT_Magnitude[i] * STFT_Magnitude[i];
             }
@@ -684,7 +684,7 @@ void denoiser(void)
     ******/
     PRINTF("\n\n****** Computing iSTFT ***** \n");
     pi_cluster_task(task_stft,&RuniSTFT,NULL);
-    L1_Memory = pmsis_l1_malloc(_L1_Memory_SIZE);
+    L1_Memory = pi_l1_malloc(&cluster_dev, _L1_Memory_SIZE);
     if (L1_Memory==NULL){
         printf("Error allocating L1\n");
         pmsis_exit(-1);
@@ -692,7 +692,7 @@ void denoiser(void)
 
     pi_cluster_send_task_to_cl(&cluster_dev, task_stft);
 
-    pmsis_l1_malloc_free(L1_Memory,_L1_Memory_SIZE);
+    pi_l1_free(&cluster_dev, L1_Memory,_L1_Memory_SIZE);
 
 
     #ifdef CHECKSUM
@@ -700,14 +700,14 @@ void denoiser(void)
 
         p_err = 0.0f; p_sig=0.0f;
         for (int i = 10; i< FRAME_SIZE-10; i++ ){
-            float err = (float)(Audio_Frame[i] - STFT_Spectrogram[i]); 
+            float err = (float)(Audio_Frame[i] - STFT_Spectrogram[i]);
             p_err += (err * err);
             p_sig += Audio_Frame[i] * Audio_Frame[i];
 
         }
         printf("Completed the checksum check\n");
 
-        if (p_err == 0.0f) 
+        if (p_err == 0.0f)
             snr = 1000000000.0f;
         else
             snr = p_sig / p_err;
@@ -737,14 +737,14 @@ void denoiser(void)
         PRINTF("Writing Frame %d/%d to the output buffer\n\n", frame_id+1, tot_frames);
 
         // Cast if needed
-        pi_ram_read(&HyperRam,  (short *) outSig + (frame_id*FRAME_STEP), 
+        pi_ram_read(&HyperRam,  (short *) outSig + (frame_id*FRAME_STEP),
             Audio_Frame_temp, FRAME_SIZE * sizeof(short));
 
         // from DATA_S
         for (int i= 0 ; i<FRAME_SIZE; i++){
             Audio_Frame_temp[i] += (short int)(Audio_Frame[i] * (1<<15));
         }
-        pi_ram_write(&HyperRam,  (short *) outSig + (frame_id*FRAME_STEP),   
+        pi_ram_write(&HyperRam,  (short *) outSig + (frame_id*FRAME_STEP),
             Audio_Frame_temp, FRAME_SIZE * sizeof(short));
 #endif
 
@@ -767,15 +767,15 @@ void denoiser(void)
     __PREFIX(_L2_Memory) = pi_l2_malloc(denoiser_L2_SIZE);
     if (__PREFIX(_L2_Memory) == 0) {
         printf("Error when allocating L2 buffer\n");
-        pmsis_exit(18);        
+        pmsis_exit(18);
     }
 
 
     // copy input data to L3
     pi_ram_read(&HyperRam, outSig,   __PREFIX(_L2_Memory), num_samples * sizeof(short));
-    
 
-    // final sample 
+
+    // final sample
     out_temp_buffer = (short int * ) __PREFIX(_L2_Memory);
     PRINTF("\nAudio Out: ");
     for (int i= 0 ; i<num_samples; i++){
@@ -783,7 +783,7 @@ void denoiser(void)
     }
     PRINTF("\n");
 
-    WriteWavToFile("test_gap.wav", 16, 16000, 1, 
+    WriteWavToFile("test_gap.wav", 16, 16000, 1,
         (uint32_t *) __PREFIX(_L2_Memory), num_samples* sizeof(short));
     printf("Writing wav file to test_gap.wav completed successfully\n");
 
@@ -802,11 +802,11 @@ int main()
 {
 	PRINTF("\n\n\t *** Denoiser ***\n\n");
 
-#if IS_SFU == 0 
+#if IS_SFU == 0
     #define __XSTR(__s) __STR(__s)
     #define __STR(__s) #__s
     WavName = __XSTR(WAV_FILE);
-#endif    
+#endif
 
 
     return pmsis_kickoff((void *) denoiser);
