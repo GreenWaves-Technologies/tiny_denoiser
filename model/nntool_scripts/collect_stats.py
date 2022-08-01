@@ -1,21 +1,17 @@
+# The script takes the calibration samples and
+# returns the quantization ranges of the TinyDenoiser models 
+# using the NNtool APIs
+
 import numpy as np
 import librosa
 import sys, os
 
-#import nntool 
+#import nntool APIs
 from nntool.execution.graph_executer import GraphExecuter
 from nntool.stats.activation_ranges_collector import ActivationRangesCollector
 
 import pickle
 
-
-# export some layers to be moved to nntool script
-#NNToolShell.run_commands_on_graph(G, ['nodeoption LSTM_78 RNN_STATES_AS_INPUTS 1',
-#									   'nodeoption LSTM_78 LSTM_OUTPUT_C_STATE 1',
-#									   'nodeoption LSTM_144 RNN_STATES_AS_INPUTS 1',
-#									   'nodeoption LSTM_144 LSTM_OUTPUT_C_STATE 1',
-#									   'show'])
-#
 
 # input variables
 quant_sample_path = sys.argv[1]
