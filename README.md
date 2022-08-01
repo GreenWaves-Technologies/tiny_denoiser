@@ -2,7 +2,8 @@
 
 This project demonstrates a Recurrent Neural Network (RNN) based method for Speech Enhamencement on GAP9.  
 The main loop of the application continuosly samples data from the microphone at 16kHz, applies the RNN filter and reconstruct the cleaned signal via overlap-and-add.
-
+As depitcted in the Figure below, the nosiy signal is windowed (frame size of 25 msec with an hop lenght of 6.25 msec and Hanning windowing) and the STFT is computed. 
+The RNN is fed with the magnitude of the STFT components and return a suppression mask. After weighting, the inverse STFT returns a cleaned audio clip.
 
 ![alt text](imgs/TinyDenoiser.png?raw=true "Title" | width=50)
 
@@ -18,17 +19,28 @@ make clean all run platform=gvsoc APP_MODE=1 [WAV_FILE=/<path_to_audio_file>/<fi
 In the latter case do not forget to source GAP9_V2 target. Output wav file will be written to 
 test_gap.wav inside the BUILD folder.
 
-## Configs
-
-The application code 
-
-## Python Utilities
+## Project Structure
+* denoiser.c is the 
 
 
-## Tests on TinyDenoisers 
+## Configuration
+The application code provides mulitple options, depending also if running on _board_ or _gvsoc_ target.
+A list of available options includes:
+* ds: 
+
+
+### Demo Setting (APP_MODE = 0 or 1)
+
+
+### Tests on TinyDenoisers (APP_MODE = 0 or 3)
+test
 ```
 make all run platform=gvsoc APP_MODE=3 SILENT=0 STFT_FRAMES=10
 ```
+
+
+## Python Utilities
+
 
 ## Test on GAP
 To denoise a wav file:
