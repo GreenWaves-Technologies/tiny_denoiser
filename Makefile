@@ -13,62 +13,67 @@ include $(RULES_DIR)/pmsis_defs.mk
 ##############################################
 ############ Application Mode ################
 # 0:	Demo: input SFU, Run Denoiser, Output SFU
-# 1:	DenoiseWav: Input file Wav, Run Denoiser, Output file Wav
+# 1:	Demo DenoiseWav: Input file Wav, Run Denoiser, Output file Wav
 # 2: 	DSPWav_test: Input file Wav, Run Denoiser but not NN, Check Output Wav
-# 3:  NN_Test: Input file STFT, Run NN Denoiser only, check NN Output
+# 3:  	NN_Test: Input file STFT, Run NN Denoiser only, check NN Output
 APP_MODE?=0
 ############################################## 
 # 0:	Demo
 ifeq ($(APP_MODE), 0)
-	OSPIRAM=1
 	IS_SFU=1 
-	IS_INPUT_FILE=0
 	IS_INPUT_STFT=0
-	#DISABLE_NN_INFERENCE=0
+	DISABLE_NN_INFERENCE=0
 
 	APP_SRCS   += $(TARGET_BUILD_DIR)/GraphINOUT_L2_Descr.c $(SFU_RUNTIME)/SFU_RT.c
 	APP_CFLAGS += -I$(TARGET_BUILD_DIR) -I$(SFU_RUNTIME)/include
 	io=uart
+	DEMO=1
+
 endif
 # 1:	DenoiseWav
 ifeq ($(APP_MODE), 1)
 	IS_SFU=0 
 	IS_INPUT_STFT=0
 	DISABLE_NN_INFERENCE=0
-	IS_INPUT_FILE=1
 	io=host
+	WAV_FILE?=$(CURDIR)/samples/real_samples/airplane.wav
+	DEMO=1
 endif
 # 2: 	DSPWav_test
 ifeq ($(APP_MODE), 2)
 	IS_SFU=0 
 	IS_INPUT_STFT=0
 	DISABLE_NN_INFERENCE=1
-	IS_INPUT_FILE=1
 	WAV_FILE?=$(CURDIR)/samples/dataset/noisy/p232_050.wav
 	io=host
+	DEMO=0
+
 endif
 # 3:  NN_Test
 ifeq ($(APP_MODE), 3)
 	IS_SFU=0 
 	IS_INPUT_STFT=1
 	DISABLE_NN_INFERENCE=0
-	IS_INPUT_FILE=1
 	STFT_FRAMES=1
 	io=host
+	CHECKSUM=1
+	DEMO=0
 endif
+
+
 ############################################## 
 FLASH_TYPE ?= DEFAULT
 RAM_TYPE   ?= DEFAULT
 #############################################
-### 					External Mem Settings
+### 	External Mem Settings
 #############################################
-
+EXEC_FROM_FLASH ?= false
 ifeq '$(FLASH_TYPE)' 'HYPER'
     MODEL_L3_FLASH=AT_MEM_L3_HFLASH
 else ifeq '$(FLASH_TYPE)' 'MRAM'
     MODEL_L3_FLASH=AT_MEM_L3_MRAMFLASH
     READFS_FLASH = target/chip/soc/mram
-    EXEC_FLASH=true
+    EXEC_FROM_FLASH=true
 else ifeq '$(FLASH_TYPE)' 'QSPI'
     MODEL_L3_FLASH=AT_MEM_L3_QSPIFLASH
     READFS_FLASH = target/board/devices/spiflash
@@ -91,9 +96,8 @@ endif
 #quantization dependent features
 
 # Quantization Mode
-# FP16=float16, BFP16 = float16alt
+# FP16=float16
 QUANT_BITS?=FP16
-GRU?=0
 H_STATE_LEN?=256
 
 SILENT?=1
@@ -102,30 +106,41 @@ DEBUG?=0
 DEBUG_STFT?=0
 
 
-FREQ_CL=370
-FREQ_FC=370
-OSPIRAM?=0
+FREQ_CL?=370
+FREQ_FC?=370
+VOLTAGE?=800
 
 
-NNTOOL_EXTRA_FLAGS =
 
 #############################################
-### 					Demo Settings
+### 		Demo Settings
 #############################################
-ifeq ($(APP_MODE), 0)
 
-	QUANT_BITS=FP16
-	GRU=0
-	MODEL_PREFIX = denoiser_dns
-	MODEL_FP16=1
-	NNTOOL_EXTRA_FLAGS=--use_lut_sigmoid --use_lut_tanh
-	NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_demo
+QUANT_BITS?=FP16MIXED
+MODEL_PREFIX=denoiser_dns
+MODEL_FP16=1
+MODEL_SQ8=1
 
-endif 
+NNTOOL_EXTRA_FLAGS=--use_lut_sigmoid --use_lut_tanh
+NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_demo
+GRU?=1
+#endif 
+DEMO?=0
+
+
+ifeq ($(APP_MODE), 0)	
+	DEMO 		= 0
+	FLASH_TYPE 	= MRAM
+	RAM_TYPE   	= DEFAULT
+	FREQ_CL		= 240
+	FREQ_FC		= 240
+	VOLTAGE		= 650
+endif
+
 #############################################
-### 					Experiment Settings
+### NN experiment setup
 #############################################
-ifneq ($(APP_MODE), 0) 
+ifeq ($(APP_MODE), 3) 
 
 	# select model
 	ifeq ($(GRU), 0)
@@ -135,78 +150,46 @@ ifneq ($(APP_MODE), 0)
 	endif
 
 	# select quantization level 
-	ifeq 		'$(QUANT_BITS)' '8'
-	MODEL_SQ8=1
-	MODEL_FP16=1
+	ifeq 	'$(QUANT_BITS)' 'FP16'
+		MODEL_FP16=1
+		MODEL_SQ8=0
+		ifeq ($(GRU), 0)
+			NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_fp16
+		else
+			NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_fp16_gru
+		endif
 
-	NNTOOL_EXTRA_FLAGS=--use_lut_sigmoid --use_lut_tanh
-	ifeq ($(GRU), 0)
-		NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_int8
+	else ifeq 	'$(QUANT_BITS)' 'FP16MIXED'
+		MODEL_FP16=1
+		MODEL_SQ8=1
+		ifeq ($(GRU), 0)
+			NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_fp16_mixed
+		else
+			NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_fp16_gru_mixed
+		endif
+
+	else ifeq 	'$(QUANT_BITS)' '8'
+		MODEL_SQ8=1
+		MODEL_FP16=1
+		ifeq ($(GRU), 0)
+			NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_int8
+		else
+			NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_int8_gru 
+		endif
+
+	else ifeq 	'$(QUANT_BITS)' 'NE16'
+		$(error NE16 Quantization mode is not yet fully supported)
+		MODEL_NE16=1
+		MODEL_SQ8=1
+		ifeq ($(GRU), 0)
+			NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_ne16
+		else
+			NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_ne16_gru 
+		endif
+
 	else
-		NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_int8_gru 
+		$(error Quantization mode is not recognized. Choose among 8, 16, FP16 or NE16)
 	endif
-
-else ifeq 	'$(QUANT_BITS)' '16'
-	NNTOOL_SCRIPT=model/nntool_scripts/nntool_script
-
-else ifeq 	'$(QUANT_BITS)' 'NE16'
-	MODEL_NE16=1
-	MODEL_SQ8=1
-	ifeq ($(GRU), 0)
-		NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_ne16
-	else
-		NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_ne16_gru 
-	endif
-
-
-else ifeq 	'$(QUANT_BITS)' 'FP16'
-	MODEL_FP16=1
-	NNTOOL_EXTRA_FLAGS=--use_lut_sigmoid --use_lut_tanh
-	ifeq ($(GRU), 0)
-		NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_fp16
-	else
-		NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_fp16_gru
-	endif
-
-else ifeq 	'$(QUANT_BITS)' 'FP16MIXED'
-	MODEL_FP16=1
-	MODEL_SQ8=1
-
-	NNTOOL_EXTRA_FLAGS=--use_lut_sigmoid --use_lut_tanh
-	ifeq ($(GRU), 0)
-		NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_fp16_mixed
-	else
-		NNTOOL_SCRIPT=
-	endif
-
-else ifeq 	'$(QUANT_BITS)' 'BFP16'
-
-	NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_bfp16
-	MODEL_FP16=1
-	NNTOOL_EXTRA_FLAGS=--use_lut_sigmoid --use_lut_tanh
-
-
-
-
-#RAM_FLASH_TYPE ?= HYPER
-#
-#ifeq '$(RAM_FLASH_TYPE)' 'HYPER'
-#APP_CFLAGS += -DUSE_HYPER
-#CONFIG_HYPERRAM = 1
-#MODEL_L3_EXEC=hram
-#MODEL_L3_CONST=hflash
-#else
-#APP_CFLAGS += -DUSE_SPI
-#CONFIG_SPIRAM = 1
-#MODEL_L3_EXEC=qspiram
-#MODEL_L3_CONST=qpsiflash
-#endif
-
-
-
-else
-	$(error Quantization mode is not recognized. Choose among 8, 16, FP16 or NE16)
-endif
 endif
 
 ## Model Definition Parameters ##
@@ -246,9 +229,9 @@ ifeq '$(TARGET_CHIP)' 'GAP9_V2'
 	CLUSTER_SLAVE_STACK_SIZE=2048
 	CLUSTER_NUM_CORES=8
 	TOTAL_STACK_SIZE=$(shell expr $(CLUSTER_STACK_SIZE) \+ $(CLUSTER_SLAVE_STACK_SIZE) \* $(CLUSTER_NUM_CORES))
-	MODEL_L1_MEMORY=$(shell expr 120000 \- $(TOTAL_STACK_SIZE))
-	MODEL_L2_MEMORY=1000000
-	MODEL_L3_MEMORY=8000000
+	MODEL_L1_MEMORY?=$(shell expr 120000 \- $(TOTAL_STACK_SIZE))
+	MODEL_L2_MEMORY?=1000000
+	MODEL_L3_MEMORY?=8000000
 
 else
 	ifeq '$(TARGET_CHIP)' 'GAP9'
@@ -260,7 +243,6 @@ else
 		CLUSTER_NUM_CORES=8
 		TOTAL_STACK_SIZE=$(shell expr $(CLUSTER_STACK_SIZE) \+ $(CLUSTER_SLAVE_STACK_SIZE) \* $(CLUSTER_NUM_CORES))
 		MODEL_L1_MEMORY=$(shell expr 120000 \- $(TOTAL_STACK_SIZE))
-	#	MODEL_L2_MEMORY=1300000
 		MODEL_L2_MEMORY=300000
 		MODEL_L3_MEMORY=8000000
 
@@ -311,13 +293,12 @@ APP_CFLAGS += -Isamples
 #defines
 APP_CFLAGS += -DAT_MODEL_PREFIX=$(MODEL_PREFIX) $(MODEL_SIZE_CFLAGS)
 APP_CFLAGS += -DSTACK_SIZE=$(CLUSTER_STACK_SIZE) -DSLAVE_STACK_SIZE=$(CLUSTER_SLAVE_STACK_SIZE) 
-APP_CFLAGS += -DFREQ_FC=$(FREQ_FC) -DFREQ_CL=$(FREQ_CL) -DFREQ_SFU=$(FREQ_SFU) 
+APP_CFLAGS += -DFREQ_FC=$(FREQ_FC) -DFREQ_CL=$(FREQ_CL) -DFREQ_SFU=$(FREQ_SFU) -DVOLTAGE=$(VOLTAGE)
 APP_CFLAGS += -DAT_IMAGE=$(IMAGE) -DWAV_FILE=$(WAV_FILE) #-DWRITE_WAV #-DPRINT_AT_INPUT #-DPRINT_WAV 
 
 APP_CFLAGS += -DIS_SFU=$(IS_SFU)
 APP_CFLAGS += -DIS_AUDIO_FILE=$(IS_AUDIO_FILE)
 APP_CFLAGS += -DIS_INPUT_STFT=$(IS_INPUT_STFT)
-APP_CFLAGS += -DIS_INPUT_FILE=$(IS_INPUT_FILE)
 
 APP_CFLAGS += -DSTFT_FRAMES=$(STFT_FRAMES)
 APP_CFLAGS += -DFRAME_SIZE=$(FRAME_SIZE)
@@ -328,41 +309,38 @@ APP_CFLAGS += -DSAMPLING_FREQ=$(SAMPLING_FREQ)
 APP_CFLAGS += -DAT_INPUT_WIDTH=$(AT_INPUT_WIDTH)
 APP_CFLAGS += -DAT_INPUT_HEIGHT=$(AT_INPUT_HEIGHT)
 APP_CFLAGS += -DMAX_L2_BUFFER=$(MODEL_L2_MEMORY)
-APP_CFLAGS += -DOSPIRAM=$(OSPIRAM)
+APP_CFLAGS += -DDEMO=$(DEMO)
+APP_CFLAGS += -DH_STATE_LEN=$(H_STATE_LEN)
+
 
 
 APP_LDFLAGS		+= -lm
 
 
 ifeq 	'$(QUANT_BITS)' 'FP16'
-	APP_CFLAGS += -DDTYPE=0
 	APP_CFLAGS += -DSTD_FLOAT
 
-else ifeq 	 	'$(QUANT_BITS)' 'FP16MIXED'
-	APP_CFLAGS += -DDTYPE=0
+else ifeq 	 '$(QUANT_BITS)' 'FP16MIXED'
 	APP_CFLAGS += -DSTD_FLOAT
-
-else ifeq 	'$(QUANT_BITS)' 'BFP16'
-	APP_CFLAGS += -DDTYPE=1
-	APP_CFLAGS += -DF16_DSP_BFLOAT
 
 else ifeq 	'$(QUANT_BITS)' '8'
-	APP_CFLAGS += -DDTYPE=2
 	APP_CFLAGS += -DSTD_FLOAT
 
 else ifeq 	'$(QUANT_BITS)' 'NE16'
-	APP_CFLAGS += -DDTYPE=2
 	APP_CFLAGS += -DSTD_FLOAT
 
 else
-	APP_CFLAGS += -DDTYPE=3
 
 endif
 
 ifeq ($(platform), gvsoc)
 	APP_CFLAGS += -DPERF
 else
-	APP_CFLAGS += -DPERF #-DFROM_SENSOR -DSILENT
+	ifeq ($(APP_MODE), 0)
+	APP_CFLAGS += -DAUDIO_EVK 
+	else
+	APP_CFLAGS += -DPERF -DAUDIO_EVK 
+	endif
 endif
 
 ifeq ($(SILENT), 1)
@@ -402,15 +380,6 @@ $(TARGET_BUILD_DIR)/GraphINOUT_L2_Descr.c: $(CURDIR)/Graph.src
 
 graph: $(TARGET_BUILD_DIR)/GraphINOUT_L2_Descr.c
 	
-
-generate_samples:
-	python utils/generate_samples_images.py --dct_coefficient_count $(DCT_COUNT) --window_size_ms $(FRAME_SIZE) --window_stride_ms $(FRAME_STEP)
-
-test_accuracy:
-	python utils/test_accuracy_emul.py --tflite_model $(TRAINED_TFLITE_MODEL) --dct_coefficient_count $(DCT_COUNT) --window_size_ms $(FRAME_SIZE) --window_stride_ms $(FRAME_STEP) --test_with_wav $(WITH_MFCC) --use_power_spectrogram $(USE_POWER)
-
-test_accuracy_tflite:
-	python utils/test_accuracy_tflite.py --tflite_model $(TRAINED_TFLITE_MODEL) --dct_coefficient_count $(DCT_COUNT) --window_size_ms $(FRAME_SIZE) --window_stride_ms $(FRAME_STEP) --use_power_spectrogram $(USE_POWER)
 
 # all depends on the model
 all:: | model gen_fft_code graph

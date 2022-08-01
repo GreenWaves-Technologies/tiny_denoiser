@@ -7,69 +7,61 @@
  *
  */
 
-// GAP Libraries and BSP
+/* 
+    include files
+*/
 #include "Gap.h"
 #include "bsp/ram.h"
-//#include "bsp/ram/default_ram.h"
+#include <bsp/fs/hostfs.h>
+#include "wavIO.h" 
 
 // Autotiler NN functions
 #include "RFFTKernels.h"
+#include "WinLUT_f16.def"   //load the input audio signal and compute the STFT
 
-#if IS_SFU == 1
-    // demo configuration
-    #include "denoiser_dns.h"
+
+// NN Model Header
+#if DEMO == 1 
+    #include "denoiser_dns.h"   // demo configuration
 #else
-#ifdef GRU
-    #include "denoiser_GRU.h"
-#else
-    #include "denoiser.h"
-#endif
-#endif
-
-// FS and Audio utils
-#include "wavIO.h" 
-//#include "fs_switch.h"
-#include <bsp/fs/hostfs.h>
-
-
-#define Q_BIT_IN 27
-#define Q_BIT_OUT (Q_BIT_IN-4)
-
-// macros for F16 sqrt
-#ifdef F16_DSP_BFLOAT
-    #define SqrtF16(a) __builtin_pulp_f16altsqrt(a)
-#else
-    #define SqrtF16(a) __builtin_pulp_f16sqrt(a)
+    #ifdef GRU
+        #include "denoiser_GRU.h"
+    #else
+        #include "denoiser.h"
+    #endif
 #endif
 
-// global struct
+/* 
+     global variables
+*/
 struct pi_device DefaultRam; 
 struct pi_device* ram = &DefaultRam;
 
 AT_DEFAULTFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 
-// board-dependent defines
-struct pi_device gpio_port;
-struct pi_device gpio_in;
-pi_gpio_e gpio_pin_o; /* PI_GPIO_A02-PI_GPIO_A05 */
-int val_gpio;
-
-// datatype for computation
-#if DTYPE == 0
-    #define DATATYPE_SIGNAL     float16
-    #define DATATYPE_SIGNAL_INF float16
-#elif DTYPE == 1
-    #define DATATYPE_SIGNAL     float16alt
-    #define DATATYPE_SIGNAL_INF float16alt
-#elif DTYPE == 2
-    #define DATATYPE_SIGNAL     float16
-    #define DATATYPE_SIGNAL_INF char
-#else
-    #define DATATYPE_SIGNAL short
+#ifdef AUDIO_EVK
+    // GPIO defines
+    struct pi_device gpio_port;
+    struct pi_device gpio_in;
+    pi_gpio_e gpio_pin_o; /* PI_GPIO_A02-PI_GPIO_A05 */
+    int val_gpio;
 #endif
 
+static struct pi_default_flash_conf flash_conf;
+static pi_fs_file_t * file[1];
+static struct pi_device fs;
+static struct pi_device flash;
 
-//#define PERF 1
+
+// datatype for computation
+#define DATATYPE_SIGNAL     float16
+#define DATATYPE_SIGNAL_INF float16
+#define SqrtF16(a) __builtin_pulp_f16sqrt(a)
+
+
+
+
+
 /*
     Configuration: 
         IS_INPUT_STFT := 0
@@ -88,17 +80,10 @@ int val_gpio;
 
 #if IS_INPUT_STFT == 0 
 
-    //load the input audio signal and compute the STFT
-    #ifdef __gap9__
-        #include "WinLUT_f16.def"
-    #else
-
-    #endif
-
     // defines for audio IOs
 
     // allocate space to load the input signal
-    #define AUDIO_BUFFER_SIZE (MAX_L2_BUFFER) // as big as the L2 autotiler
+    #define AUDIO_BUFFER_SIZE (MAX_L2_BUFFER>>1) // as big as the L2 autotiler
     char *WavName = NULL;
 
     // L3 arrays to store input and output audio 
@@ -143,13 +128,14 @@ PI_L2 DATATYPE_SIGNAL STFT_Magnitude[AT_INPUT_WIDTH*AT_INPUT_HEIGHT];     // mag
 PI_L2 DATATYPE_SIGNAL Audio_Frame_temp[FRAME_SIZE];
 #else 
 PI_L2 short int Audio_Frame_temp[FRAME_SIZE];
-#endif //IS_INPUT_STFT == 0 && IS_INPUT_FILE == 1
+#endif //IS_INPUT_STFT == 0 && IS_SFU == 0
 
 PI_L2 int ResetLSTM;
 
 // RNN states statically allocated to preserve the values during time
-#define RNN_STATE_DIM_0 257 // FIXME: should be replaced with model-dependent defines
-#define RNN_STATE_DIM_1 257
+// note that, for simplicity we left the rnn states to be 16 bits variables even if quantized to 8 bits
+#define RNN_STATE_DIM_0 (H_STATE_LEN) 
+#define RNN_STATE_DIM_1 (H_STATE_LEN)
 PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_0_I[RNN_STATE_DIM_0];
 PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_1_I[RNN_STATE_DIM_1];
 #ifndef GRU
@@ -157,17 +143,18 @@ PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_0_C[RNN_STATE_DIM_0];
 PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_1_C[RNN_STATE_DIM_1];
 #endif
 
-#if IS_INPUT_STFT == 0 ///load the input audio signal and compute the MFCC
+
+
 /*
     STFT computation
         argument parameters are manually set based on STFT configuration
 */
 static void RunSTFT()
 {
-#   ifdef PERF
+#ifdef PERF
     gap_cl_starttimer();
     gap_cl_resethwtimer();
-#   endif
+#endif
     unsigned int ta = gap_cl_readhwtimer();
 
     // compute the STFT 
@@ -227,9 +214,6 @@ static void RuniSTFT()
     PRINTF("%45s: Cycles: %10d\n","iSTFT: ", ti );
 }
 
-#endif  //IS_INPUT_STFT == 0 // end TF transformation 
-
-
 /*
     Denoiser Task
 */
@@ -244,29 +228,15 @@ static void RunDenoiser()
     gap_cl_resethwtimer();
 #   endif
 
-
-// casting from preprocessing datatype to NN datatype
-    DATATYPE_SIGNAL_INF * net_in_out = (DATATYPE_SIGNAL_INF * ) STFT_Magnitude;
-#   if DTYPE == 2
-    // scale and quantize
-    PRINTF("\nQuantized Inputs: ");
-    int temp ; 
-    for(int i = 0 ; i<257; i++){
-        temp  = (DATATYPE_SIGNAL_INF) ( (DATATYPE_SIGNAL) STFT_Magnitude[i] /  SCALE_IN);
-        if (temp > 127) net_in_out[i] = 127;
-        else if (temp < -128) net_in_out[i] = -128;
-        else net_in_out[i] = temp;
-        PRINTF("%d, ", temp);
-    }
-    PRINTF("\n");
-#   endif
-
     /* Denoiser NN computation
           input: STFT_Magnitude: DATATYPE_SIGNAL, 
           output: STFT_Magnitude, DATATYPE_SIGNAL - reusing the same buffer
           states: RNN_STATE_0_I, RNN_STATE_0_C, RNN_STATE_1_I, RNN_STATE_1_C, must be preserved
           reset: only enabled at the start of the application
     */
+#ifdef AUDIO_EVK
+        pi_gpio_pin_write(&gpio_port, gpio_pin_o, 1);
+#endif
     __PREFIX(CNN)(
 #   ifndef GRU
         RNN_STATE_1_C,
@@ -279,154 +249,110 @@ static void RunDenoiser()
         ResetLSTM, 
         STFT_Magnitude
     );
+#ifdef AUDIO_EVK
+        pi_gpio_pin_write(&gpio_port, gpio_pin_o, 0);
+#endif
 
-    // casting from inference datatype to post-processing datatype
-#   if DTYPE == 2
-    // scale and dequantize the output
-    PRINTF("Denoiser Output INT8:\n");
-    for(int i = 0 ; i<257; i++){
-        PRINTF("%d, ", (char) net_in_out[i]);
-        STFT_Magnitude [257-i] = (DATATYPE_SIGNAL) net_in_out[257-i] * (DATATYPE_SIGNAL) SCALE_OUT ;
-    }
-    PRINTF("\n");
-
-    //    #define DATATYPE_SIGNAL     float16
-    //    #define DATATYPE_SIGNAL_INF char
-    //  
-    //  //scale the state
-    //  for(int i = 0 ; i<257; i++){
-    //    temp  = (DATATYPE_SIGNAL_INF) ( (DATATYPE_SIGNAL) LSTM_STATE_0_I[i] /  SCALE_IN);
-    //    if (temp > 127) net_in_out[i] = 127;
-    //    else if (temp < -128) net_in_out[i] = -128;
-    //    else net_in_out[i] = temp;
-    //    PRINTF("%d, ", temp);
-    //  }
-
-#   endif //DTYPE == 2
-
-    //#if DTYPE == 1
-    //  printf("Going to cast the output from bf16 to f16\n");
-    //  for(int i = 0 ; i<257; i++){
-    //    STFT_Magnitude[i] = (float16) temp_bfp16[i];
-    //    printf("%f, ", STFT_Magnitude[i]);
-    //  }
-    //#endif
-
-    // apply denoising here: filter the STFT spectrogram with the mask in STFT_Magnitude
-#   ifdef PERF
-    ta = gap_cl_readhwtimer();
-#   endif
-    
+    /* 
+        apply denoising here! 
+        filter the STFT_Spectrogram with the mask in STFT_Magnitude
+        if STFT_Magnitude[i] == 1.0 the filtering does not apply
+    */
     for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
         STFT_Spectrogram[2*i]    = STFT_Spectrogram[2*i]   * STFT_Magnitude[i];
         STFT_Spectrogram[2*i+1]  = STFT_Spectrogram[2*i+1] * STFT_Magnitude[i];
         //STFT_Spectrogram[2*i]    = STFT_Spectrogram[2*i]   * 1.0f;
         //STFT_Spectrogram[2*i+1]  = STFT_Spectrogram[2*i+1] * 1.0f;
     }    
-#   ifdef PERF
-    ti = gap_cl_readhwtimer() - ta;
-    PRINTF("%45s: Cycles: %10d\n","iScaling: ", ti );
-#   endif
-
-
-
 }
 
 
 #if IS_SFU == 1
-    
 
-#include "GraphINOUT_L2_Descr.h"
-#include "SFU_RT.h"
+    #include "GraphINOUT_L2_Descr.h"
+    #include "SFU_RT.h"
 
-#define BUFF_SIZE (FRAME_STEP*4)
-#define CHUNK_NUM (8)
+    // FIXME: to tune it!!
+    #define Q_BIT_IN 28
+    #define Q_BIT_OUT (Q_BIT_IN-3)
 
-//This should be equal to FRAME_SIZE/FRAME_STEP + 1
-#define STRUCT_DELAY (5)
+    #define BUFF_SIZE (FRAME_STEP*4)
+    #define CHUNK_NUM (8)
 
-#define SAI_ITF_IN         (1)
-#define SAI_ITF_OUT        (2)
+    //This should be equal to FRAME_SIZE/FRAME_STEP + 1
+    #define STRUCT_DELAY (5)
 
-#define SAI_ID               (48)
-#define SAI_SCK(itf)         (48+(itf*4)+0)
-#define SAI_WS(itf)          (48+(itf*4)+1)
-#define SAI_SDI(itf)         (48+(itf*4)+2)
-#define SAI_SDO(itf)         (48+(itf*4)+3)
+    #define SAI_ITF_IN         (1)
+    #define SAI_ITF_OUT        (2)
 
-SFU_uDMA_Channel_T *ChanOutCtxt_0;
-SFU_uDMA_Channel_T *ChanOutCtxt_1;
-SFU_uDMA_Channel_T *ChanInCtxt_0;
-SFU_uDMA_Channel_T *ChanInCtxt_1;
+    #define SAI_ID               (48)
+    #define SAI_SCK(itf)         (48+(itf*4)+0)
+    #define SAI_WS(itf)          (48+(itf*4)+1)
+    #define SAI_SDI(itf)         (48+(itf*4)+2)
+    #define SAI_SDO(itf)         (48+(itf*4)+3)
 
-void ** BufferInList;
-void ** BufferOutList;
+    SFU_uDMA_Channel_T *ChanOutCtxt_0;
+    SFU_uDMA_Channel_T *ChanOutCtxt_1;
+    SFU_uDMA_Channel_T *ChanInCtxt_0;
+    SFU_uDMA_Channel_T *ChanInCtxt_1;
 
-volatile int remaining_size;
-volatile int sent_size;
-volatile int done;
-int nb_transfers;
-int current_size[2];
-static pi_task_t proc_task;
+    void ** BufferInList;
+    void ** BufferOutList;
 
-
-static int open_i2s_PDM(struct pi_device *i2s, unsigned int SAIn, unsigned int Frequency, unsigned int Polarity, unsigned int Diff)
-{
-    struct pi_i2s_conf i2s_conf;
-    pi_i2s_conf_init(&i2s_conf);
-
-    // polarity: b0: SDI: slave/master, b1:SDO: slave/master    1:RX, 0:TX
-    i2s_conf.options = PI_I2S_OPT_REF_CLK_FAST;
-    i2s_conf.frame_clk_freq = Frequency;                // In pdm mode, the frame_clk_freq = i2s_clk
-    i2s_conf.itf = SAIn;                                // Which sai interface
-    i2s_conf.format |= PI_I2S_FMT_DATA_FORMAT_PDM;      // Choose PDM mode
-    i2s_conf.pdm_polarity = Polarity;                   // 2b'11 slave on both SDI and SDO (SDO under test)
-    i2s_conf.pdm_diff = Diff;                           // Set differential mode on pairs (TX only)
-
-//    i2s_conf.options |= PI_I2S_OPT_EXT_CLK;             // Put I2S CLK in input mode for safety
-
-    pi_open_from_conf(i2s, &i2s_conf);
-
-    if (pi_i2s_open(i2s))
-        return -1;
-
-    pi_pad_set_function(SAI_SCK(SAIn),PI_PAD_FUNC0);
-    pi_pad_set_function(SAI_SDI(SAIn),PI_PAD_FUNC0);
-    pi_pad_set_function(SAI_SDO(SAIn),PI_PAD_FUNC0);
-    pi_pad_set_function(SAI_WS(SAIn),PI_PAD_FUNC0);
-
-    return 0;
-}
-
-static int chunk_in_cnt;
+    volatile int remaining_size;
+    volatile int sent_size;
+    volatile int done;
+    int nb_transfers;
+    int current_size[2];
+    static pi_task_t proc_task;
 
 
+    static int open_i2s_PDM(struct pi_device *i2s, unsigned int SAIn, unsigned int Frequency, unsigned int Polarity, unsigned int Diff)
+    {
+        struct pi_i2s_conf i2s_conf;
+        pi_i2s_conf_init(&i2s_conf);
 
-static void handle_sfu_in_0_end(void *arg)
-{
-    
-    if(chunk_in_cnt==STRUCT_DELAY){
-        //pi_time_wait_us(5000);
-        SFU_Enqueue_uDMA_Channel_Multi(ChanOutCtxt_0, CHUNK_NUM, BufferOutList, BUFF_SIZE, 0);
-        SFU_GraphResetInputs(&SFU_RTD(GraphINOUT));
+        // polarity: b0: SDI: slave/master, b1:SDO: slave/master    1:RX, 0:TX
+        i2s_conf.options = PI_I2S_OPT_REF_CLK_FAST;
+        i2s_conf.frame_clk_freq = Frequency;                // In pdm mode, the frame_clk_freq = i2s_clk
+        i2s_conf.itf = SAIn;                                // Which sai interface
+        i2s_conf.format |= PI_I2S_FMT_DATA_FORMAT_PDM;      // Choose PDM mode
+        i2s_conf.pdm_polarity = Polarity;                   // 2b'11 slave on both SDI and SDO (SDO under test)
+        i2s_conf.pdm_diff = Diff;                           // Set differential mode on pairs (TX only)
+
+    //    i2s_conf.options |= PI_I2S_OPT_EXT_CLK;             // Put I2S CLK in input mode for safety
+
+        pi_open_from_conf(i2s, &i2s_conf);
+
+        if (pi_i2s_open(i2s))
+            return -1;
+
+        pi_pad_set_function(SAI_SCK(SAIn),PI_PAD_FUNC0);
+        pi_pad_set_function(SAI_SDI(SAIn),PI_PAD_FUNC0);
+        pi_pad_set_function(SAI_SDO(SAIn),PI_PAD_FUNC0);
+        pi_pad_set_function(SAI_WS(SAIn),PI_PAD_FUNC0);
+
+        return 0;
     }
 
-        pi_task_push(&proc_task);
-
-}
+    static int chunk_in_cnt;
 
 
+
+    static void handle_sfu_in_0_end(void *arg)
+    {
+        
+        if(chunk_in_cnt==STRUCT_DELAY){
+            //pi_time_wait_us(5000);
+            SFU_Enqueue_uDMA_Channel_Multi(ChanOutCtxt_0, CHUNK_NUM, BufferOutList, BUFF_SIZE, 0);
+            SFU_GraphResetInputs(&SFU_RTD(GraphINOUT));
+        }
+
+            pi_task_push(&proc_task);
+    }
 
 #endif // IS_SFU == 1 
 
-
-//static switch_file_t File = (switch_file_t) 0;
-//static switch_fs_t fs;
-
-static struct pi_default_flash_conf flash_conf;
-static pi_fs_file_t * file[1];
-static struct pi_device fs;
-static struct pi_device flash;
 
 
 
@@ -444,46 +370,76 @@ void denoiser(void)
     //PMU_set_voltage(voltage, 0);
     printf("Set VDD voltage as %.2f, FC Frequency as %d MHz, CL Frequency = %d MHz\n", 
         (float)voltage/1000, FREQ_FC, FREQ_CL);
-//    pulp_write32(0x1A10414C,1);   // what is this?
 
-//    /****
-//        Configure GPIO Output.
-//    ****/
-//    struct pi_gpio_conf gpio_conf = {0};
-////    gpio_pin_o = PI_GPIO_A89; /* PI_GPIO_A02-PI_GPIO_A05 */
-////    pi_pad_set_function(PI_PAD_089, PI_PAD_FUNC1);
-//
-//    gpio_pin_o = PI_GPIO_A68; /* PI_GPIO_A02-PI_GPIO_A05 */
-//
-//
-//    pi_gpio_conf_init(&gpio_conf);
-//    pi_open_from_conf(&gpio_port, &gpio_conf);
-//    gpio_conf.port = (gpio_pin_o & PI_GPIO_NUM_MASK) / 32;
-//    int errors = pi_gpio_open(&gpio_port);
-//    if (errors)
-//    {
-//        printf("Error opening GPIO %d\n", errors);
-//        pmsis_exit(errors);
-//    }
-//    pi_gpio_pin_configure(&gpio_port, gpio_pin_o, PI_GPIO_OUTPUT);
+#ifdef AUDIO_EVK
+    /****
+        Configure GPIO Output.
+    ****/
+    struct pi_gpio_conf gpio_conf = {0};
+    gpio_pin_o = PI_GPIO_A89; /* PI_GPIO_A02-PI_GPIO_A05 */
 
 
+    pi_gpio_conf_init(&gpio_conf);
+    pi_open_from_conf(&gpio_port, &gpio_conf);
+    gpio_conf.port = (gpio_pin_o & PI_GPIO_NUM_MASK) / 32;
+    int errors = pi_gpio_open(&gpio_port);
+    if (errors)
+    {
+        printf("Error opening GPIO %d\n", errors);
+        pmsis_exit(errors);
+    }
+    pi_gpio_pin_configure(&gpio_port, gpio_pin_o, PI_GPIO_OUTPUT);
+#endif
+
+
+    /****
+        Configure And Open the External Ram. 
+    ****/
+    struct pi_default_ram_conf ram_conf;
+    pi_default_ram_conf_init(&ram_conf);
+    ram_conf.baudrate = FREQ_FC*1000*1000;
+    pi_open_from_conf(&DefaultRam, &ram_conf);
+    if (pi_ram_open(&DefaultRam))
+    {
+        printf("Error ram open !\n");
+        pmsis_exit(-3);
+    }
+
+    /****
+        Configure And open cluster. 
+    ****/
+
+    struct pi_device cluster_dev;
+    struct pi_cluster_conf cl_conf;
+    pi_cluster_conf_init(&cl_conf);
+    cl_conf.cc_stack_size = STACK_SIZE;
+    pi_open_from_conf(&cluster_dev, (void *) &cl_conf);
+    if (pi_cluster_open(&cluster_dev))
+    {
+        PRINTF("Cluster open failed !\n");
+        pmsis_exit(-4);
+    }
+    pi_freq_set(PI_FREQ_DOMAIN_CL, FREQ_CL*1000*1000);
+
+    /****
+        Change Frequency if needed
+    ****/
+#ifdef AUDIO_EVK
+    pi_pmu_voltage_set(PI_PMU_VOLTAGE_DOMAIN_CHIP, VOLTAGE);
+    pi_pmu_voltage_set(PI_PMU_VOLTAGE_DOMAIN_CHIP, VOLTAGE);
+#endif 
 
 
 
-#   if IS_SFU == 1 
-
+#if IS_SFU == 1 
+    /****
+        Setup the SFU for PDM in/out
+    ****/
     struct pi_device i2s_in;
     struct pi_device i2s_out;
     int Status;
     int Trace = 0;
     pi_task_block(&proc_task);
-
-    //int32_t* Audio_Frame = (int32_t*) pi_l2_malloc(FRAME_SIZE*sizeof(int32_t));
-    //if(Audio_Frame==NULL){
-    //    printf("Audio Frame Malloc Failed! Exit...\n");
-    //    pmsis_exit(-1);
-    //}
 
     // Drive pad with 12 mAP to have less noise
     uint32_t *Magic_Setting_0 = 0x1A104064;
@@ -539,58 +495,18 @@ void denoiser(void)
 
     pi_time_wait_us(100000);
 
-#   else //IS_SFU == 1 
+#else //IS_SFU == 0 
 
     /****
-        Configure And Open the External Ram. 
+        Load Audio Wav from file 
+        if not testing STFT input
     ****/
-    struct pi_default_ram_conf ram_conf;
-    pi_default_ram_conf_init(&ram_conf);
-    ram_conf.baudrate = FREQ_FC*1000*1000;
-    pi_open_from_conf(&DefaultRam, &ram_conf);
-    if (pi_ram_open(&DefaultRam))
-    {
-        printf("Error ram open !\n");
-        pmsis_exit(-3);
-    }
-#   endif //IS_SFU == 1 
-    /****
-        Configure And open cluster. 
-    ****/
+    
+#if IS_INPUT_STFT == 0 
 
-    struct pi_device cluster_dev;
-    struct pi_cluster_conf cl_conf;
-    pi_cluster_conf_init(&cl_conf);
-    cl_conf.cc_stack_size = STACK_SIZE;
-    pi_open_from_conf(&cluster_dev, (void *) &cl_conf);
-    if (pi_cluster_open(&cluster_dev))
-    {
-        PRINTF("Cluster open failed !\n");
-        pmsis_exit(-4);
-    }
-    pi_freq_set(PI_FREQ_DOMAIN_CL, FREQ_CL*1000*1000);
-
-
-#   if IS_INPUT_STFT == 0 
-
-    /******
-        Setup STFT/ISTF task
-    ******/
-    printf("Setup STFT task!\n");
-    struct pi_cluster_task* task_stft;
-    task_stft = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
-    pi_cluster_task(task_stft,&RunSTFT,NULL);
-    if (task_stft == NULL) {
-        PRINTF("failed to allocate memory for task\n");
-    }
-    pi_cluster_task_stacks(task_stft, NULL, SLAVE_STACK_SIZE);
-
-    /****
-        Read Audio Data from file using __PREFIX(_L2_Memory) as temporary buffer
-        Data are prepared in L3 external memory
-    ****/
-#   if IS_INPUT_FILE == 1
-    // allocate L2 Memory
+    // Read Audio Data from file using __PREFIX(_L2_Memory) as temporary buffer
+    // Data are prepared in L3 external memory
+ 
     __PREFIX(_L2_Memory) = pi_l2_malloc(denoiser_L2_SIZE);
     if (__PREFIX(_L2_Memory) == 0) {
         printf("Error when allocating L2 buffer\n");
@@ -598,12 +514,12 @@ void denoiser(void)
     }
     
     // Allocate L3 buffers for audio IN/OUT
-    if (pi_ram_alloc(&DefaultRam, &inSig, (uint32_t) AUDIO_BUFFER_SIZE))
+    if (pi_ram_alloc(&DefaultRam, &inSig, (uint32_t) AUDIO_BUFFER_SIZE*sizeof(short)))
     {
         printf("inSig Ram malloc failed !\n");
         pmsis_exit(-4);
     }
-    if (pi_ram_alloc(&DefaultRam, &outSig, (uint32_t) AUDIO_BUFFER_SIZE))
+    if (pi_ram_alloc(&DefaultRam, &outSig, (uint32_t) AUDIO_BUFFER_SIZE*sizeof(short)))
     {
         printf("outSig Ram malloc failed !\n");
         pmsis_exit(-5);
@@ -622,8 +538,14 @@ void denoiser(void)
     PRINTF("BitsPerSample: %d\n", header_info.BitsPerSample);
     printf("Finished Read wav.\n");
 
+
+    if(num_samples*sizeof(short) > denoiser_L2_SIZE){
+        printf("The size of the audio exceeds the available L2 memory space!\n");
+        pmsis_exit(1);
+    }
+
     // copy input data to L3
-    pi_ram_write(&DefaultRam, inSig,   __PREFIX(_L2_Memory), num_samples * sizeof(short));
+    pi_ram_write(&DefaultRam, inSig, __PREFIX(_L2_Memory), num_samples * sizeof(short));
 
     // Reset Output Buffer and copy to L3
     short * out_temp_buffer = (short *) __PREFIX(_L2_Memory);
@@ -633,14 +555,29 @@ void denoiser(void)
     pi_ram_write(&DefaultRam, outSig,   __PREFIX(_L2_Memory), num_samples * sizeof(short));
 
     // free the temporary input memory
-    pi_l2_free(__PREFIX(_L2_Memory),denoiser_L2_SIZE);
-
-#   endif //IS_INPUT_FILE == 1
-
-#   endif //IS_INPUT_STFT == 0 
+    pi_l2_free( __PREFIX(_L2_Memory), denoiser_L2_SIZE);
 
 
-#   ifndef DISABLE_NN_INFERENCE 
+#endif //IS_INPUT_STFT == 0 
+#endif //IS_SFU
+
+
+    /******
+        Setup STFT/ISTF task
+    ******/
+    printf("Setup STFT task!\n");
+    struct pi_cluster_task* task_stft;
+    task_stft = pmsis_l2_malloc(sizeof(struct pi_cluster_task));
+    pi_cluster_task(task_stft,&RunSTFT,NULL);
+    if (task_stft == NULL) {
+        PRINTF("failed to allocate memory for task\n");
+    }
+    pi_cluster_task_stacks(task_stft, NULL, SLAVE_STACK_SIZE);
+
+
+
+
+#ifndef DISABLE_NN_INFERENCE 
     /******
         Setup Denoiser NN inference task (if enabled)
     ******/
@@ -676,22 +613,24 @@ void denoiser(void)
     }
     PRINTF("Denoiser Contrcuctor OK! The L1 memory base is: %x\n",__PREFIX(_L1_Memory));
 
-#   endif // DISABLE_NN_INFERENCE
+#endif // DISABLE_NN_INFERENCE
 
 
-#   if IS_INPUT_STFT == 0 
+#if IS_INPUT_STFT == 0 
 
 /****
     Load the input audio signal and compute the MFCC
-    Audio_Frame: includes only a single frame for audio
+    IMP: Audio_Frame includes only a single frame for audio
 ****/
 
-#   if IS_INPUT_FILE == 1
+#if IS_SFU == 0     
+    
+    // audio from file
 
     int tot_frames = (int) (((float)num_samples / FRAME_STEP) - NUM_FRAME_OVERLAP) ;
     printf("Number of frames to be processed: %d\n", tot_frames);
 
-    for (int frame_id = 0; frame_id < tot_frames; frame_id++)
+    for (int frame_id=0; frame_id < tot_frames; frame_id++)
     {   
         printf("***** Processing Frame %d of %d ***** \n", frame_id+1, tot_frames);
         // Copy Data from L3 to L2
@@ -708,7 +647,9 @@ void denoiser(void)
             Audio_Frame[i] = ((DATATYPE_SIGNAL) in_temp_buffer[i] )/(1<<15);
             PRINTF("%f, ", Audio_Frame[i] );
         }
-#   else //IS_INPUT_FILE == 1
+#else   
+
+    // audio from SFU
 
     chunk_in_cnt=0;
     SFU_StartGraph(&SFU_RTD(GraphINOUT));
@@ -716,8 +657,9 @@ void denoiser(void)
         
         pi_task_wait_on(&proc_task);
 
+#ifdef AUDIO_EVK
         pi_gpio_pin_write(&gpio_port, gpio_pin_o, 1);
-
+#endif
 
         int round = (chunk_in_cnt%CHUNK_NUM);
         int round_out = (chunk_in_cnt>(STRUCT_DELAY-1))? ((chunk_in_cnt-(STRUCT_DELAY-1))%CHUNK_NUM):0;
@@ -738,14 +680,13 @@ void denoiser(void)
             Audio_Frame_temp[i+FRAME_SIZE-FRAME_STEP] = (DATATYPE_SIGNAL) 0.0f;
         }
 
-#       endif //IS_INPUT_FILE == 1
-
+#endif //IS_SFU == 0     
 
 
         /******
-            MFCC Task
+            Compute the MFCC
         ******/
-        // compute mfcc if not read from file
+
         PRINTF("\n\n****** Computing STFT ***** \n");
         pi_cluster_task(task_stft,&RunSTFT,NULL);
 
@@ -799,20 +740,10 @@ void denoiser(void)
 
 
     // open FS and read the binary files with STFT (flaot values)
-   // __FS_INIT(fs);
     struct pi_hostfs_conf conf;
     pi_hostfs_conf_init(&conf);
-//    pi_default_flash_conf_init(&flash_conf);
-//    pi_open_from_conf(&flash, &flash_conf);
-//
-//    if (pi_flash_open(&flash))
-//        return -1;
-
     conf.fs.flash = &flash;
-
     pi_open_from_conf(&fs, &conf);
-
-
     if (pi_fs_mount(&fs))
         return -2;
 
@@ -822,7 +753,6 @@ void denoiser(void)
         sprintf(WavName, "../../../samples/mags_%.4d.bin",frame_id);
         printf("File being read is : %s\n", WavName);
 
-  //      File = __OPEN_READ(fs, WavName);
         file[0] = pi_fs_open(&fs, WavName, 0);
 
         if (file[0] == 0) {
@@ -832,9 +762,8 @@ void denoiser(void)
         printf("File %x of size %d\n", file[0], sizeof(pi_fs_file_t));
 
         int TotBytes = sizeof(float)*AT_INPUT_WIDTH*AT_INPUT_HEIGHT;
-        //int len = __READ(File, STFT_Spectrogram, TotBytes);
         int len = pi_fs_read(file[0], STFT_Spectrogram, TotBytes);
-        printf("Here of len=%d of %d\n", len,TotBytes );
+        printf("Bytes read %d - of %d bytes expected\n", len,TotBytes );
         if (len != TotBytes){
             printf("Too few bytes in %s\n", WavName); 
             pmsis_exit(8);
@@ -845,8 +774,6 @@ void denoiser(void)
         float * spectrogram_fp32 = (float *)STFT_Spectrogram;
         for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
             PRINTF("%f ",spectrogram_fp32[i]);
-//            STFT_Spectrogram[i] = (f16) spectrogram_fp32[i];    // FIXME: this may be removed
-//            PRINTF("(%f), ",STFT_Spectrogram[i]);
             STFT_Magnitude[i] = (DATATYPE_SIGNAL) spectrogram_fp32[i] ;
             PRINTF(" - %f), ",STFT_Magnitude[i]);
 
@@ -900,39 +827,46 @@ void denoiser(void)
         // Deassert Reset LSTM
         ResetLSTM = 0;
 
-#   ifdef CHECKSUM
-        p_err = 0.0f; p_sig=0.0f;
-        for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-            float err = ((float) STFT_Magnitude[i]) - Denoiser_Golden[i]; 
-            p_err += err * err;
-            p_sig += STFT_Magnitude[i] * STFT_Magnitude[i];
-            PRINTF("[%d] %f vs %f -> %f\n", i, STFT_Magnitude[i], Denoiser_Golden[i], (err * err)/(STFT_Magnitude[i] * STFT_Magnitude[i]));
+#ifdef CHECKSUM
+        if(frame_id == STFT_FRAMES-1){ // last frame
+            p_err = 0.0f; p_sig=0.0f;
+            for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
+                float err = ((float) STFT_Magnitude[i]) - Denoiser_Golden[i]; 
+                p_err += err * err;
+                p_sig += STFT_Magnitude[i] * STFT_Magnitude[i];
+                PRINTF("[%d] %f vs %f -> %f\n", i, STFT_Magnitude[i], Denoiser_Golden[i], (err * err)/(STFT_Magnitude[i] * STFT_Magnitude[i]));
+            }
+            snr = p_sig / p_err;
+            printf("Denoiser Signal-to-noise ratio in linear scale: %f\n", snr);
+            if (snr > 90.0f)     // qsnr >~ 20db
+                printf("--> Denoiser OK!\n");
+            else{
+                printf("--> Denoiser NOK!\n");
+                pmsis_exit(-1);
+            }            
         }
-        snr = p_sig / p_err;
-        printf("Denoiser Signal-to-noise ratio in linear scale: %f\n", snr);
-        if (snr > 90.0f)     // qsnr >~ 20db
-            printf("--> Denoiser OK!\n");
-        else{
-            printf("--> Denoiser NOK!\n");
-            pmsis_exit(-1);
-        }
-#       endif //CHECKSUM
 
+#endif //CHECKSUM
 
+#ifdef AUDIO_EVK
         pi_gpio_pin_write(&gpio_port, gpio_pin_o, 0);
+#endif
 
-#       endif  // DISABLE_NN_INFERENCE
+#endif  // DISABLE_NN_INFERENCE
 
 
-#       if IS_INPUT_STFT == 0 // if not loading the STFT
 
+#if IS_INPUT_STFT == 0 // if not loading the STFT
+
+#ifdef AUDIO_EVK
         pi_gpio_pin_write(&gpio_port, gpio_pin_o, 1);
+#endif
 
         /******
             ISTF Task
         ******/
         PRINTF("\n\n****** Computing iSTFT ***** \n");
-        pi_cluster_task(task_stft,&RuniSTFT,NULL);
+        pi_cluster_task(task_stft, &RuniSTFT, NULL);
         L1_Memory = pmsis_l1_malloc(_L1_Memory_SIZE);
         if (L1_Memory==NULL){
             printf("Error allocating L1\n");
@@ -944,7 +878,7 @@ void denoiser(void)
         pmsis_l1_malloc_free(L1_Memory,_L1_Memory_SIZE);
 
 
-#       ifdef CHECKSUM
+#ifdef CHECKSUM
         //printf("Start the checksum check\n");
 
         p_err = 0.0f; p_sig=0.0f;
@@ -967,30 +901,36 @@ void denoiser(void)
             printf("--> STFT+iSTFT NOK!\n");
             pmsis_exit(-1);
         }
-#       endif //CHECKSUM
+#endif //CHECKSUM
 
         //copy spectrogram into Audio Frames and print results
         PRINTF("\nAudio Out: ");
         for (int i= 0 ; i<FRAME_SIZE; i++){
             PRINTF("%f, ", Audio_Frame[i] );
+#if IS_SFU == 1
+            // overlap and add using temporary buffer
             Audio_Frame_temp[i] += (STFT_Spectrogram[i] / 2 );   // FIXME: divide by 2 because of current Hanning windowing
+#else
+            // use Audio_Frame to store an output frame
+            Audio_Frame[i] = (STFT_Spectrogram[i] / 2 );   // FIXME: divide by 2 because of current Hanning windowing
+#endif
         }
         PRINTF("\n");
 
 
 
-#       if IS_SFU == 1
+#if IS_SFU == 1
 
+        // block until next input audio frame is ready
+#ifdef AUDIO_EVK
         pi_gpio_pin_write(&gpio_port, gpio_pin_o, 0);
-
+#endif
         chunk_in_cnt++;
         pi_task_block(&proc_task);
-#       endif
-
-#       endif //IS_INPUT_STFT == 0
 
 
-#       if IS_INPUT_STFT == 0 && IS_INPUT_FILE == 1
+#else // audio from file 
+
         // if denoising auio files, outputs are loaded to the L3 output buffer outSig
         PRINTF("Writing Frame %d/%d to the output buffer\n\n", frame_id+1, tot_frames);
 
@@ -1004,19 +944,24 @@ void denoiser(void)
         }
         pi_ram_write(&DefaultRam,  (short *) outSig + (frame_id*FRAME_STEP),   
             Audio_Frame_temp, FRAME_SIZE * sizeof(short));
-#       endif //IS_INPUT_STFT == 0 && IS_INPUT_FILE == 1
+#endif //IS_SFU == 1
+
+#endif //IS_INPUT_STFT == 0
 
    }   // stop looping over frames
 
 
-#   ifndef DISABLE_NN_INFERENCE
+#ifndef DISABLE_NN_INFERENCE
     __PREFIX(CNN_Destruct)();
-#   endif
+#endif
 
 
 
-    // write reults to file: test_gap.wav
-#   if IS_INPUT_STFT == 0 && IS_INPUT_FILE == 1
+/*
+    Exit the real-time mode (only for testing)
+    and write clean speech audio to file: test_gap.wav
+*/
+#if IS_INPUT_STFT == 0 && IS_SFU == 0
 
     // allocate L2 Memory
     __PREFIX(_L2_Memory) = pi_l2_malloc(denoiser_L2_SIZE);
@@ -1030,7 +975,8 @@ void denoiser(void)
     out_temp_buffer = (short int * ) __PREFIX(_L2_Memory); 
     pi_ram_read(&DefaultRam, outSig,   out_temp_buffer, num_samples * sizeof(short));
     
-#   ifdef CHECKSUM
+#ifdef CHECKSUM
+
     short int * in_temp_buffer = ((short int * ) __PREFIX(_L2_Memory)) + num_samples;
     pi_ram_read(&DefaultRam, inSig,   in_temp_buffer, num_samples * sizeof(short));
 
@@ -1055,7 +1001,7 @@ void denoiser(void)
         printf("--> STFT+iSTFT NOK!\n");
 
 
-#   else //CHECKSUM
+#else //CHECKSUM
     // final sample
     PRINTF("\nAudio Out: ");
     for (int i= 0 ; i<num_samples; i++){
@@ -1066,10 +1012,10 @@ void denoiser(void)
     WriteWavToFile("test_gap.wav", 16, 16000, 1, 
         (uint32_t *) __PREFIX(_L2_Memory), num_samples* sizeof(short));
     printf("Writing wav file to test_gap.wav completed successfully\n");
-#   endif //CHECKSUM
+#endif //CHECKSUM
 
     pi_l2_free(__PREFIX(_L2_Memory),denoiser_L2_SIZE);
-#   endif //IS_INPUT_STFT == 0 && IS_INPUT_FILE == 1
+#endif //IS_INPUT_STFT == 0 && IS_SFU == 0
 
 
     // Close the cluster
