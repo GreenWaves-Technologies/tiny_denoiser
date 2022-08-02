@@ -20,7 +20,23 @@ In the latter case do not forget to source GAP9_V2 target. Output wav file will 
 test_gap.wav inside the BUILD folder.
 
 ## Project Structure
-* denoiser.c is the 
+* `denoiser.c` is the main file, including the application code
+* `model/` includes the necessary files to feed GAPflow for NN model code generation: 
+    * the _onnx_ denoiser files
+        * `denoiser_dns.onnx` is a GRU based models trained on the [DNS][dns] dataset. It is used for demo purpose.
+        * `denoiser.onnx` and `denoiser_GRU.onnx` are respectively LSTM and GRU models trained on the [Valentini][valentini]. they are used for testing purpose.
+    * `nntool_scripts/` includes the nntool recipes to quantize the LSTM or GRU models. You can refer to the [quantization section](#quantization-details) for more details. 
+* `samples/` contains the audio samples for testing and quantization claibration
+* `stft_model.mk` and `model/STFTModel.c` are respectively the Makefile and the AT generator model for the STFT ad iSTFT functions. This files are manually configured. The baseline implementation exploits FP32 datatype.
+*  `Graph.src` is the configuation file for Audio IO. It is used only for board target.
+
+## NN Quantization Settings
+The Post-Training quantization process of the RNN model is operated by the GAPflow.
+Both LSTM and GRU models can be quantized using one of the different options:
+* `FP16`: quantizing both activations and weights to _float16_ format. This does not require any calibration samples.
+* `INT8`: quantizing both activations and weights to _int_8_ format. A calibration step is required to quantize the activation functions. Samples included within `samples/quant/` are used to this aim. This option is currently not suggested because of the not-negligible accuracy degradation.
+* `FP16MIXED`: only RNN layers are quantized to 8 bits, while the rest is kept to FP16. This option achives the **best** trade-off between accuracy degration and inference speed.
+* `NE16`: currently not supported. 
 
 
 ## Configuration
@@ -52,4 +68,8 @@ python test_accuracy/test_GAP.py --mode sample --pad_input 300 --sample_rate 160
 To test on dataset: 
 ```
 python test_accuracy/test_GAP.py --mode test --pad_input 300 --dataset_path ./<path_to_audio_dataset>/
+```
+
+[dns]: https://www.microsoft.com/en-us/research/academic-program/deep-noise-suppression-challenge-interspeech-2020/
+[valentini]: https://datashare.ed.ac.uk/handle/10283/2791
 
