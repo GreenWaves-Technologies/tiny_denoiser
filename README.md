@@ -58,7 +58,7 @@ A list of available options includes:
 ## APP_MODE Configuration
 In addition to individua settings, some application mode are made available to simplify the APP code configuration. This is done by setting the APP_MODE varaible (default is 0).
 ### Demo Setting (APP_MODE 0 or 1)
-The code runs inference using the `denoiser_dns.onnx` model with  `FP16MIXED` quantization. 
+The code runs inference using the `denoiser_dns.onnx` model with  `FP16MIXED` quantization. More accurate at higher energy costs can be obtained with `FP16` quantization by changing the `nntool_script_demo`.
 * `APP_MODE = 0` is meant to run on _board_ target and audio data comes from the microphone.
 * `APP_MODE = 1` is meant to run on _gvsoc_ target and audio data comes from the WAV_FILE file. The wav cleaned audio can be retrieved from the _BUILD_ folder.
 
