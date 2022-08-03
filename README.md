@@ -29,6 +29,7 @@ test_gap.wav inside the BUILD folder.
 * `samples/` contains the audio samples for testing and quantization claibration
 * `stft_model.mk` and `model/STFTModel.c` are respectively the Makefile and the AT generator model for the STFT ad iSTFT functions. This files are manually configured. The baseline implementation exploits FP32 datatype.
 *  `Graph.src` is the configuation file for Audio IO. It is used only for board target.
+*  `test_accuracy/` includes the python scripts for model accuracy tests. You can refer to the [Python Utilities](#python-utilities) for more details.
 
 ## NN Quantization Settings
 The Post-Training quantization process of the RNN model is operated by the GAPflow.
@@ -39,17 +40,36 @@ Both LSTM and GRU models can be quantized using one of the different options:
 * `NE16`: currently not supported. 
 
 
-## Configuration
+## Project Configuration
 The application code provides mulitple options, depending also if running on _board_ or _gvsoc_ target.
 A list of available options includes:
-* ds: 
+* `FREQ_CL` and `FREQ_FC`: to set respectively the clock frequency of the cluster and the fabric controller. Also the periph frequency is set to FREQ_FC. Max frequnecy depends on the voltage: 370 if 0.8V and 240 if 0.65V.
+* `VOLTAGE` (_board_ target only): to select between 0.8V (VOLTAGE=800) and 0.65V (VOLTAGE=650).
+* `FLASH_TYPE`: type of L3 (external) FLASH memory. Set to 'DEFAULT' to adapt to the current board configuration (defined when sourcing the sdk, e.g. AUDIO_EVK). Optimal configuration is 'MRAM', if the model can fit.
+* `RAM_TYPE`: type of L3 (external) RAM memory. Set to 'DEFAULT' to adapt to the current board configuration (defined when sourcing the sdk, e.g. AUDIO_EVK). 
+* `IS_SFU` (_board_ target only): input data from microphone sensor.
+* `IS_INPUT_STFT` (_gvsoc_ target only): 
+    * [0]: input data from file as multiple STFT frames. Hence, STFT preprocessing is not applied and model inference runs over the loaded STFT spectrograms. Mainly used for testing.
+    * [1]: input audio data from file. The wav file is configured with WAV_FILE.
+* `WAV_FILE`: absolute path of the input wav file. 
+* `DISABLE_NN_INFERENCE`: if set to 1, the inference task is skipped. Default is 0. Mainly used for testing.
+* `SILENT`: to enable debug printf (default is 0).
 
-
+## APP_MODE Configuration
+In addition to individua settings, some application mode are made available to simplify the APP code configuration. This is done by setting the APP_MODE varaible (default is 0).
 ### Demo Setting (APP_MODE = 0 or 1)
+The code runs inference using the `denoiser_dns.onnx` model with  `FP16MIXED` quantization. 
+* `APP_MODE = 0` is meant to run on _board_ target and audio data comes from the microphone.
+* `APP_MODE = 1` is meant to run on _gvsoc_ target and audio data comes from the WAV_FILE file. The wav cleaned audio can be retrieved from the _BUILD_ folder.
 
+You can refer to the commands in the [Demo Getting Started section](#demo-getting-started).
+### Tests on STFT and iSTFT (APP_MODE 2)
+In this configuration, the NN inference is disabled and an audio frame feeds the STFT + iSTFT pipeline. A final checksum checks the similarity between the input and output signals. 
 
-### Tests on TinyDenoisers (APP_MODE = 0 or 3)
-test
+### Tests on TinyDenoisers (APP_MODE 3)
+* `GRU`
+* `QUANT_BITS`
+
 ```
 make all run platform=gvsoc APP_MODE=3 SILENT=0 STFT_FRAMES=10
 ```
