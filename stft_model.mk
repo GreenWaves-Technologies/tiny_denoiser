@@ -1,6 +1,6 @@
 # User Test
 #------------------------------------------
-FFT_BUILD_DIR ?= $(CURDIR)/BUILD_MODEL_STFT_MODE$(APP_MODE)
+FFT_BUILD_DIR ?= $(CURDIR)/BUILD_MODEL_STFT
 FFT_MODEL_GEN = $(FFT_BUILD_DIR)/GenSTFT
 FFT_SRCG += $(TILER_DSP_GENERATOR_PATH)/DSP_Generators.c
 WIN_LUT = $(FFT_BUILD_DIR)/WinLUT_f16.def

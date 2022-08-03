@@ -1,29 +1,24 @@
+# The script takes the calibration samples and
+# returns the quantization ranges of the TinyDenoiser models 
+# using the NNtool APIs
+
 import numpy as np
 import librosa
 import sys, os
 
-#import nntool 
-from interpreter.nntool_shell import NNToolShell
-from execution.graph_executer import GraphExecuter
-from stats.activation_ranges_collector import ActivationRangesCollector
-from quantization.quantizer.new_quantizer import NewQuantizer
-from graph.matches.matchers.remove_unnecessary_quantize_operators import RemoveUnnecessaryQuantizeOperators
+#import nntool APIs
+from nntool.execution.graph_executer import GraphExecuter
+from nntool.stats.activation_ranges_collector import ActivationRangesCollector
 
 import pickle
 
-
-# export some layers to be moved to nntool script
-#NNToolShell.run_commands_on_graph(G, ['nodeoption LSTM_78 RNN_STATES_AS_INPUTS 1',
-#									   'nodeoption LSTM_78 LSTM_OUTPUT_C_STATE 1',
-#									   'nodeoption LSTM_144 RNN_STATES_AS_INPUTS 1',
-#									   'nodeoption LSTM_144 LSTM_OUTPUT_C_STATE 1',
-#									   'show'])
-#
 
 # input variables
 quant_sample_path = sys.argv[1]
 quantization_bits = sys.argv[2]
 gru = int(sys.argv[3])
+h_state_len = int(sys.argv[5])
+
 print(gru)
 
 path_model_build = sys.argv[4]
@@ -47,7 +42,7 @@ print('The calibration samples are taken from: ', quant_sample_path)
 # parameters
 SR = 16000
 use_ema = False
-lstm_hidden_states = 256
+lstm_hidden_states = h_state_len
 
 # defines
 executer = GraphExecuter(G, qrecs=None)
