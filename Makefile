@@ -47,6 +47,7 @@ ifeq ($(APP_MODE), 2)
 	WAV_FILE?=$(CURDIR)/samples/dataset/noisy/p232_050.wav
 	io=host
 	DEMO=0
+	CHECKSUM=1
 
 endif
 # 3:  NN_Test
@@ -140,8 +141,8 @@ endif
 #############################################
 ### NN experiment setup
 #############################################
-ifeq ($(APP_MODE), 3) 
-
+#ifeq ($(APP_MODE), 3) 
+ifeq ($(shell expr $(APP_MODE) \>= 2), 1)
 	# select model
 	ifeq ($(GRU), 0)
 		MODEL_PREFIX = denoiser

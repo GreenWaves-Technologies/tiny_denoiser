@@ -59,25 +59,6 @@ static struct pi_device flash;
 #define SqrtF16(a) __builtin_pulp_f16sqrt(a)
 
 
-
-
-
-/*
-    Configuration: 
-        IS_INPUT_STFT := 0
-            IS_FAKE_SIGNAL_IN := 0
-                >> load input input wav file and compute STFT
-            IS_FAKE_SIGNAL_IN := 1
-                >> input wav is a synthetic audio vector
-        IS_INPUT_STFT := 1
-            IS_FAKE_SIGNAL_IN := 0
-                >> skip STFT computation and load STFT matrix
-            IS_FAKE_SIGNAL_IN := 1
-                >> skip STFT computation and use synthetic STFT matrix
-        APPLY_DENOISER
-*/
-// #define CHECKSUM // defined by the Makefile
-
 #if IS_INPUT_STFT == 0 
 
     // defines for audio IOs
@@ -534,8 +515,7 @@ void denoiser(void)
         pmsis_exit(1);
     }
     int num_samples = header_info.DataSize * 8 / (header_info.NumChannels * header_info.BitsPerSample);
-    printf("Num Samples: %d\n", num_samples);
-    PRINTF("BitsPerSample: %d\n", header_info.BitsPerSample);
+    printf("Num Samples: %d with BitsPerSample: %d\n", num_samples, header_info.BitsPerSample);
     printf("Finished Read wav.\n");
 
 
@@ -713,27 +693,6 @@ void denoiser(void)
             PRINTF("%f, ",STFT_Magnitude[i]);
         }
         PRINTF("\n");
-
-        /*
-        Useful to check individual STFT
-        APP_MODE=2
-        WAV_FILE?=$(CURDIR)/samples/sample_0000.wav
-        #ifdef CHECKSUM
-                for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-                    float err = STFT_Magnitude[i] - STFT_Mag_Golden[i]; 
-                    p_err += err * err;
-                    p_sig += STFT_Magnitude[i] * STFT_Magnitude[i];
-                }
-                snr = p_sig / p_err;
-                printf("STFT Signal-to-noise ratio in linear scale: %f\n", snr);
-                if (snr > 10000.0f)     // qsnr > 40db
-                    printf("--> STFT OK!\n");
-                else{
-                    printf("--> STFT NOK!\n");
-                    pmsis_exit(-1);
-                }
-        #endif
-        */
     
 
 #   else // IS_INPUT_STFT == 0  //load the STFT 
@@ -894,7 +853,7 @@ void denoiser(void)
             snr = 1000000000.0f;
         else
             snr = p_sig / p_err;
-        printf("Denoiser Signal-to-noise ratio in linear scale: %f\n", snr);
+        PRINTF("Denoiser Signal-to-noise ratio in linear scale: %f\n", snr);
         if (snr > 1000.0f)     // qsnr > 30db
             printf("--> STFT+iSTFT OK!\n");
         else{
@@ -997,8 +956,10 @@ void denoiser(void)
     printf("ISTFT Signal-to-noise ratio in linear scale: %f\n", snr);
     if (snr > 1000.0f)     // qsnr > 30db
         printf("--> STFT+iSTFT OK!\n");
-    else
+    else{
         printf("--> STFT+iSTFT NOK!\n");
+        pmsis_exit(-1);
+    }
 
 
 #else //CHECKSUM
