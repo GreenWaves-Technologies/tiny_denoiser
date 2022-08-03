@@ -25,7 +25,7 @@ test_gap.wav inside the BUILD folder.
     * the _onnx_ denoiser files
         * `denoiser_dns.onnx` is a GRU based models trained on the [DNS][dns] dataset. It is used for demo purpose.
         * `denoiser.onnx` and `denoiser_GRU.onnx` are respectively LSTM and GRU models trained on the [Valentini][valentini]. they are used for testing purpose.
-    * `nntool_scripts/` includes the nntool recipes to quantize the LSTM or GRU models. You can refer to the [quantization section](#quantization-details) for more details. 
+    * `nntool_scripts/` includes the nntool recipes to quantize the LSTM or GRU models. You can refer to the [quantization section](#nn-quantization-settings) for more details. 
 * `samples/` contains the audio samples for testing and quantization claibration
 * `stft_model.mk` and `model/STFTModel.c` are respectively the Makefile and the AT generator model for the STFT ad iSTFT functions. This files are manually configured. The baseline implementation exploits FP32 datatype.
 *  `Graph.src` is the configuation file for Audio IO. It is used only for board target.
@@ -57,7 +57,7 @@ A list of available options includes:
 
 ## APP_MODE Configuration
 In addition to individua settings, some application mode are made available to simplify the APP code configuration. This is done by setting the APP_MODE varaible (default is 0).
-### Demo Setting (APP_MODE = 0 or 1)
+### Demo Setting (APP_MODE 0 or 1)
 The code runs inference using the `denoiser_dns.onnx` model with  `FP16MIXED` quantization. 
 * `APP_MODE = 0` is meant to run on _board_ target and audio data comes from the microphone.
 * `APP_MODE = 1` is meant to run on _gvsoc_ target and audio data comes from the WAV_FILE file. The wav cleaned audio can be retrieved from the _BUILD_ folder.
@@ -65,27 +65,34 @@ The code runs inference using the `denoiser_dns.onnx` model with  `FP16MIXED` qu
 You can refer to the commands in the [Demo Getting Started section](#demo-getting-started).
 ### Tests on STFT and iSTFT (APP_MODE 2)
 In this configuration, the NN inference is disabled and an audio frame feeds the STFT + iSTFT pipeline. A final checksum checks the similarity between the input and output signals. 
+```
+make clean all run platform=gvsoc APP_MODE=2
+```
 
 ### Tests on TinyDenoisers (APP_MODE 3)
-* `GRU`
-* `QUANT_BITS`
+Configuration used to run tests on the NN model inference under various quantization settings. In this case, we refer to the LSTM or GRU TinyDenoiser models trained on Valentini and we use input STFT frames. The following options could be set:
+* `GRU`: 0 for LSTM (`denoiser.onnx`) and 1 for GRU (`denoiser_GRU.onnx`).
+* `QUANT_BITS`: to select among the available [quantization options](#nn-quantization-settings).
 
+The list of prebuilt tests with checksum:
 ```
-make all run platform=gvsoc APP_MODE=3 SILENT=0 STFT_FRAMES=10
+make clean all run platform=gvsoc APP_MODE=3 GRU=0 STFT_FRAMES=1
+make clean all run platform=gvsoc APP_MODE=3 GRU=1 STFT_FRAMES=1
+make clean all run platform=gvsoc APP_MODE=3 GRU=0 STFT_FRAMES=10
 ```
+The checksum are included in `samples/golden_sample_0000.h`.
 
 
 ## Python Utilities
+The `test_accuracy/test_GAP.py` file provides the routines for testing the NN inference model using the NNtool API. The script can be used to run tests on entire datasets (`--mode test`) or to denoise individual audio files (`--mode test`). Some examples are provided below. 
 
-
-## Test on GAP
-To denoise a wav file:
+### To denoise a wav file
 ```
 python test_accuracy/test_GAP.py --mode sample --pad_input 300 --sample_rate 16000 --wav_input /<path_to_audio_file>/<file_name>.wav
 python test_accuracy/test_GAP.py --mode sample --pad_input 300 --sample_rate 16000 --wav_input samples/dataset/noisy/p232_050.wav --quant fp16mixed
 ```
 
-To test on dataset: 
+### To test on dataset
 ```
 python test_accuracy/test_GAP.py --mode test --pad_input 300 --dataset_path ./<path_to_audio_dataset>/
 ```
