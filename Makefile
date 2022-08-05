@@ -36,7 +36,7 @@ ifeq ($(APP_MODE), 1)
 	IS_INPUT_STFT=0
 	DISABLE_NN_INFERENCE=0
 	io=host
-	WAV_FILE?=$(CURDIR)/samples/real_samples/airplane.wav
+	WAV_FILE?=$(CURDIR)/samples/real_samples/phone_call.wav
 	DEMO=1
 endif
 # 2: 	DSPWav_test
@@ -386,7 +386,7 @@ graph: $(TARGET_BUILD_DIR)/GraphINOUT_L2_Descr.c
 all:: | model gen_fft_code graph
 
 clean:: clean_model clean_fft_code
-	rm -rf BUILD_MODEL*
+	rm -rf BUILD*
 
 include common/model_rules.mk
 
