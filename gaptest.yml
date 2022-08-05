@@ -15,7 +15,7 @@ variants:
             - integration
             - release
         duration: standard
-        flags: APP_MODE=2 GRU=0 QUANT_BITS=FP16 SILENT=1 
+        flags: APP_MODE=2 GRU=0 QUANT_BITS=FP16 SILENT=1 STFT_FRAMES=1
     nn_test:
         name: denoiser_nn_test
         tags:
