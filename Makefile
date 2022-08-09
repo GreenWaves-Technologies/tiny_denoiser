@@ -48,7 +48,7 @@ ifeq ($(APP_MODE), 2)
 	io=host
 	DEMO=0
 	CHECKSUM=1
-
+	STFT_FRAMES=1
 endif
 # 3:  NN_Test
 ifeq ($(APP_MODE), 3)

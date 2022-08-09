@@ -836,36 +836,16 @@ void denoiser(void)
 
     	pi_l1_free(&cluster_dev, L1_Memory,_L1_Memory_SIZE);
 
-
-#ifdef CHECKSUM
-        //printf("Start the checksum check\n");
-
-        p_err = 0.0f; p_sig=0.0f;
-        for (int i = 10; i< FRAME_SIZE-10; i++ ){
-            float err = (float)(Audio_Frame[i] - STFT_Spectrogram[i]); 
-            p_err += (err * err);
-            p_sig += Audio_Frame[i] * Audio_Frame[i];
-
-        }
-        printf("Completed the checksum check\n");
-
-        if (p_err == 0.0f) 
-            snr = 1000000000.0f;
-        else
-            snr = p_sig / p_err;
-        PRINTF("Denoiser Signal-to-noise ratio in linear scale: %f\n", snr);
-        if (snr > 1000.0f)     // qsnr > 30db
-            printf("--> STFT+iSTFT OK!\n");
-        else{
-            printf("--> STFT+iSTFT NOK!\n");
-            pmsis_exit(-1);
-        }
-#endif //CHECKSUM
-
-        //copy spectrogram into Audio Frames and print results
+        
+        // debug printf
         PRINTF("\nAudio Out: ");
         for (int i= 0 ; i<FRAME_SIZE; i++){
-            PRINTF("%f, ", Audio_Frame[i] );
+            PRINTF("%f,", Audio_Frame[i] );
+        }
+
+
+        //copy spectrogram into Audio Frames 
+        for (int i= 0 ; i<FRAME_SIZE; i++){
 #if IS_SFU == 1
             // overlap and add using temporary buffer
             Audio_Frame_temp[i] += (STFT_Spectrogram[i] / 2 );   // FIXME: divide by 2 because of current Hanning windowing
@@ -943,6 +923,7 @@ void denoiser(void)
     for (int i = 0; i< num_samples; i++ ){   // remove first and last elements from checksum
         float in_signal = ((float) in_temp_buffer[i] )/(1<<15);
         float out_signal = ((float) out_temp_buffer[i] )/(1<<15);
+        PRINTF("%f vs %f\n", in_signal, out_signal);
         float err = in_signal - out_signal; 
         p_err += (err * err);
         p_sig += (in_signal * in_signal);
