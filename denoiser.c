@@ -342,6 +342,13 @@ void denoiser(void)
 {
     printf("Entering main controller\n");
 
+        /****
+        Change Frequency if needed
+    ****/
+#ifdef AUDIO_EVK
+    pi_pmu_voltage_set(PI_PMU_VOLTAGE_DOMAIN_CHIP, VOLTAGE);
+    pi_pmu_voltage_set(PI_PMU_VOLTAGE_DOMAIN_CHIP, VOLTAGE);
+#endif 
  
     // Voltage-Frequency settings
     uint32_t voltage =VOLTAGE;
@@ -401,14 +408,6 @@ void denoiser(void)
         pmsis_exit(-4);
     }
     pi_freq_set(PI_FREQ_DOMAIN_CL, FREQ_CL*1000*1000);
-
-    /****
-        Change Frequency if needed
-    ****/
-#ifdef AUDIO_EVK
-    pi_pmu_voltage_set(PI_PMU_VOLTAGE_DOMAIN_CHIP, VOLTAGE);
-    pi_pmu_voltage_set(PI_PMU_VOLTAGE_DOMAIN_CHIP, VOLTAGE);
-#endif 
 
 
 

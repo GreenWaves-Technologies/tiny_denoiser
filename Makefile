@@ -137,7 +137,7 @@ ifeq ($(APP_MODE), 0)
 	FREQ_CL		= 240
 	FREQ_FC		= 240
 	FREQ_SFU    = 240
-	VOLTAGE		= 800
+	VOLTAGE		= 650
 endif
 
 #############################################
