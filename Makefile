@@ -130,7 +130,6 @@ DEMO?=0
 
 
 ifeq ($(APP_MODE), 0)	
-	DEMO 		= 0
 	FLASH_TYPE 	= MRAM
 	RAM_TYPE   	= DEFAULT
 	FREQ_CL		= 240
