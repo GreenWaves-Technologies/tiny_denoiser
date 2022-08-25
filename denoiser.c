@@ -342,7 +342,7 @@ void denoiser(void)
 {
     printf("Entering main controller\n");
 
-
+ 
     // Voltage-Frequency settings
     uint32_t voltage =1200;
     pi_freq_set(PI_FREQ_DOMAIN_FC,      FREQ_FC*1000*1000);
@@ -434,7 +434,7 @@ void denoiser(void)
     // Configure PDM in
     if (open_i2s_PDM(&i2s_in, SAI_ITF_IN,   3072000, 3, 0)) return -1;
     // Configure PDM out
-    if (open_i2s_PDM(&i2s_out, SAI_ITF_OUT, 3072000, 2, 1)) return -1;
+    if (open_i2s_PDM(&i2s_out, SAI_ITF_OUT, 3072000, 0, 0)) return -1;
 
     StartSFU(FREQ_SFU*1000*1000, 1);
 
@@ -464,7 +464,7 @@ void denoiser(void)
 
     // Connect Channels to SFU for PDM OUT
     Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, In1), ChanOutCtxt_0->ChannelId, 0, &SFU_RTD(GraphINOUT));
-    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT, 0, &SFU_RTD(GraphINOUT));
+    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT, 1, &SFU_RTD(GraphINOUT));
 
     //Next API will have a value to replace this high number with -1
     //To be able to 
@@ -475,6 +475,16 @@ void denoiser(void)
     pi_i2s_ioctl(&i2s_out, PI_I2S_IOCTL_START, NULL);
 
     pi_time_wait_us(100000);
+
+    fxl6408_setup();
+
+    // Setup 2 DAC
+    if(setup_dac(0) || setup_dac(1))
+    {
+        printf("Failed to setup DAC\n");
+        return -1;
+    }
+    printf("Setup DAC OK\n"); 
 
 #else //IS_SFU == 0 
 
@@ -770,16 +780,16 @@ void denoiser(void)
     #ifdef PERF
         {
             unsigned int TotalCycles = 0, TotalOper = 0;
-            printf("\n");
+            PRINTF("\n");
             for (int i=0; i<(sizeof(AT_GraphPerf)/sizeof(unsigned int)); i++) {
-                printf("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n", 
+                PRINTF("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n", 
                     AT_GraphNodeNames[i], AT_GraphPerf[i], AT_GraphOperInfosNames[i], 
                     ((float) AT_GraphOperInfosNames[i])/ AT_GraphPerf[i]);
                 TotalCycles += AT_GraphPerf[i]; TotalOper += AT_GraphOperInfosNames[i];
             }
-            printf("\n");
-            printf("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n", "Total", TotalCycles, TotalOper, ((float) TotalOper)/ TotalCycles);
-            printf("\n");
+            PRINTF("\n");
+            PRINTF("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n", "Total", TotalCycles, TotalOper, ((float) TotalOper)/ TotalCycles);
+            PRINTF("\n");
         }
     #endif  /* PERF */
 
@@ -951,7 +961,7 @@ void denoiser(void)
     }
     PRINTF("\n");
 
-    WriteWavToFile("test_gap.wav", 16, 16000, 1, 
+    WriteWavToFile("../../../test_gap.wav", 16, 16000, 1, 
         (uint32_t *) __PREFIX(_L2_Memory), num_samples* sizeof(short));
     printf("Writing wav file to test_gap.wav completed successfully\n");
 #endif //CHECKSUM

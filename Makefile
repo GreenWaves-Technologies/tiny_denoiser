@@ -26,6 +26,7 @@ ifeq ($(APP_MODE), 0)
 
 	APP_SRCS   += $(TARGET_BUILD_DIR)/GraphINOUT_L2_Descr.c $(SFU_RUNTIME)/SFU_RT.c
 	APP_CFLAGS += -I$(TARGET_BUILD_DIR) -I$(SFU_RUNTIME)/include
+	APP_SRCS += dac.c
 	io=uart
 	DEMO=1
 
@@ -98,7 +99,7 @@ endif
 
 # Quantization Mode
 # FP16=float16
-QUANT_BITS?=FP16
+#QUANT_BITS?=FP16
 H_STATE_LEN?=256
 
 SILENT?=1
@@ -129,8 +130,8 @@ GRU?=1
 DEMO?=0
 
 
-ifeq ($(APP_MODE), 0)	
-	DEMO 		= 0
+ifeq ($(APP_MODE), 0)
+	DEMO 		= 1
 	FLASH_TYPE 	= MRAM
 	RAM_TYPE   	= DEFAULT
 	FREQ_CL		= 240

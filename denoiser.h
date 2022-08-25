@@ -17,7 +17,6 @@
 #define denoiser_L1_SIZE _denoiser_L1_Memory_SIZE
 #define denoiser_L2_SIZE _denoiser_L2_Memory_SIZE
 
-
 #define SCALE_IN denoiser_Input_1_OUT_SCALE
 #define SCALE_OUT denoiser_Output_1_OUT_SCALE
 

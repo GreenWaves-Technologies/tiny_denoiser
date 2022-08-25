@@ -1,8 +1,7 @@
-
 SFU_CreateGraph("GraphINOUT");
 
 Defines:
-    CIC_N = 8; CIC_M = 2; CIC_R = 64; CIC_Shift = 27;
+    CIC_N = 8; CIC_M = 2; CIC_R = 64; CIC_Shift = 28;
     /* CIC Filter parameters for Input 3.072 MHz, Output: 48 KHz, DynOut = N*Log2(R*M) = 8*Log2(128) = 56 => Shift = 24 for Q31, 31 for Q24 */
 
 
