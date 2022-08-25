@@ -136,7 +136,8 @@ ifeq ($(APP_MODE), 0)
 	RAM_TYPE   	= DEFAULT
 	FREQ_CL		= 240
 	FREQ_FC		= 240
-	VOLTAGE		= 650
+	FREQ_SFU    = 240
+	VOLTAGE		= 800
 endif
 
 #############################################

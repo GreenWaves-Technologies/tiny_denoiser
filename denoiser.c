@@ -344,7 +344,7 @@ void denoiser(void)
 
  
     // Voltage-Frequency settings
-    uint32_t voltage =1200;
+    uint32_t voltage =VOLTAGE;
     pi_freq_set(PI_FREQ_DOMAIN_FC,      FREQ_FC*1000*1000);
     pi_freq_set(PI_FREQ_DOMAIN_PERIPH,  FREQ_FC*1000*1000);
 
@@ -474,7 +474,7 @@ void denoiser(void)
     pi_i2s_ioctl(&i2s_in, PI_I2S_IOCTL_START, NULL);
     pi_i2s_ioctl(&i2s_out, PI_I2S_IOCTL_START, NULL);
 
-    pi_time_wait_us(100000);
+    
 
     fxl6408_setup();
 
@@ -484,7 +484,8 @@ void denoiser(void)
         printf("Failed to setup DAC\n");
         return -1;
     }
-    printf("Setup DAC OK\n"); 
+    pi_time_wait_us(100000);
+    //printf("Setup DAC OK\n"); 
 
 #else //IS_SFU == 0 
 
