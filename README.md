@@ -5,7 +5,7 @@ The main loop of the application continuosly samples data from the microphone at
 As depitcted in the Figure below, the nosiy signal is windowed (frame size of 25 msec with an hop lenght of 6.25 msec and Hanning windowing) and the STFT is computed. 
 The RNN is fed with the magnitude of the STFT components and return a suppression mask. After weighting, the inverse STFT returns a cleaned audio clip.
 
-![alt text](imgs/TinyDenoiser.png?raw=true "Title" | width=50)
+![alt text](imgs/TinyDenoiser.png?raw=true "Title")
 
 ## Demo Getting Started
 The demo runs on the GAP9 Audio EVK, using the microphone of the GAPmod board.
