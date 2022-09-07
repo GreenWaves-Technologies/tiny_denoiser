@@ -47,11 +47,12 @@ AT_DEFAULTFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
     int val_gpio;
 #endif
 
-static struct pi_default_flash_conf flash_conf;
+//static struct pi_default_flash_conf flash_conf;
 static pi_fs_file_t * file[1];
 static struct pi_device fs;
 static struct pi_device flash;
-
+pi_device_t* i2c_slider;
+static PI_L2 uint16_t slider_value;
 
 // datatype for computation
 #define DATATYPE_SIGNAL     float16
@@ -124,6 +125,36 @@ PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_0_C[RNN_STATE_DIM_0];
 PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_1_C[RNN_STATE_DIM_1];
 #endif
 
+
+static uint16_t ads1014_read(pi_device_t *dev, uint8_t addr)
+{
+    uint16_t result;
+    pi_i2c_write(dev, &addr, 1, PI_I2C_XFER_START | PI_I2C_XFER_STOP);
+    pi_i2c_read(dev, (uint8_t *)&result, 2, PI_I2C_XFER_START | PI_I2C_XFER_STOP);
+    result = (result << 8) | (result >> 8);
+    return result;
+}
+
+static int ads1014_write(pi_device_t *dev, uint8_t addr, uint16_t value)
+{
+    uint8_t buffer[3] = { addr, value >> 8, value & 0xFF };
+    return pi_i2c_write(dev, buffer, 3, PI_I2C_XFER_START | PI_I2C_XFER_STOP);
+}
+
+int init_ads1014(pi_device_t *i2c){
+    struct pi_i2c_conf conf;
+    pi_i2c_conf_init(&conf);
+    conf.itf = 1;
+    pi_i2c_conf_set_slave_addr(&conf, 0x90, 0);
+
+    pi_open_from_conf(i2c, &conf);
+    if (pi_i2c_open(i2c)) return -1;
+
+    uint16_t expected = (1 << 15) | (0 << 12) | (2 << 9) | (7 << 5) | 3;
+    ads1014_write(i2c, 1, expected);
+
+
+}
 
 
 /*
@@ -240,10 +271,18 @@ static void RunDenoiser()
         if STFT_Magnitude[i] == 1.0 the filtering does not apply
     */
     for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-        STFT_Spectrogram[2*i]    = STFT_Spectrogram[2*i]   * STFT_Magnitude[i];
-        STFT_Spectrogram[2*i+1]  = STFT_Spectrogram[2*i+1] * STFT_Magnitude[i];
-        //STFT_Spectrogram[2*i]    = STFT_Spectrogram[2*i]   * 1.0f;
-        //STFT_Spectrogram[2*i+1]  = STFT_Spectrogram[2*i+1] * 1.0f;
+        //#ifdef AUDIO_EVK
+        
+        if(slider_value>28000){
+        //#endif
+            STFT_Spectrogram[2*i]    = STFT_Spectrogram[2*i]   * STFT_Magnitude[i];
+            STFT_Spectrogram[2*i+1]  = STFT_Spectrogram[2*i+1] * STFT_Magnitude[i];
+        //#ifdef AUDIO_EVK
+        }else{
+            STFT_Spectrogram[2*i]    = STFT_Spectrogram[2*i]   * 1.0f;
+            STFT_Spectrogram[2*i+1]  = STFT_Spectrogram[2*i+1] * 1.0f;    
+        }
+        //#endif
     }    
 }
 
@@ -254,8 +293,8 @@ static void RunDenoiser()
     #include "SFU_RT.h"
 
     // FIXME: to tune it!!
-    #define Q_BIT_IN 28
-    #define Q_BIT_OUT (Q_BIT_IN-3)
+    #define Q_BIT_IN 27
+    #define Q_BIT_OUT (Q_BIT_IN)
 
     #define BUFF_SIZE (FRAME_STEP*4)
     #define CHUNK_NUM (8)
@@ -486,6 +525,10 @@ void denoiser(void)
     pi_time_wait_us(100000);
     //printf("Setup DAC OK\n"); 
 
+    //Enable slicer
+    i2c_slider = pi_l2_malloc(sizeof(pi_device_t));
+    init_ads1014(i2c_slider);
+
 #else //IS_SFU == 0 
 
     /****
@@ -644,7 +687,7 @@ void denoiser(void)
     chunk_in_cnt=0;
     SFU_StartGraph(&SFU_RTD(GraphINOUT));
     while(1){
-        
+        slider_value = ads1014_read(i2c_slider, 0);
         pi_task_wait_on(&proc_task);
 
 #ifdef AUDIO_EVK

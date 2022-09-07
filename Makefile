@@ -16,7 +16,7 @@ include $(RULES_DIR)/pmsis_defs.mk
 # 1:	Demo DenoiseWav: Input file Wav, Run Denoiser, Output file Wav
 # 2: 	DSPWav_test: Input file Wav, Run Denoiser but not NN, Check Output Wav
 # 3:  	NN_Test: Input file STFT, Run NN Denoiser only, check NN Output
-APP_MODE?=0
+APP_MODE=0
 ############################################## 
 # 0:	Demo
 ifeq ($(APP_MODE), 0)
@@ -62,6 +62,16 @@ ifeq ($(APP_MODE), 3)
 	DEMO=0
 endif
 
+ifeq ($(APP_MODE), 0)
+	DEMO 		= 1
+	FLASH_TYPE 	= MRAM
+	RAM_TYPE   	= DEFAULT
+	FREQ_CL		= 200
+	FREQ_FC		= 200
+	FREQ_SFU    = 200
+	VOLTAGE		= 650
+endif
+
 
 ############################################## 
 FLASH_TYPE ?= DEFAULT
@@ -74,7 +84,7 @@ ifeq '$(FLASH_TYPE)' 'HYPER'
     MODEL_L3_FLASH=AT_MEM_L3_HFLASH
 else ifeq '$(FLASH_TYPE)' 'MRAM'
     MODEL_L3_FLASH=AT_MEM_L3_MRAMFLASH
-    READFS_FLASH = target/chip/soc/mram
+    READFS_FLASH = mram
     EXEC_FROM_FLASH=true
 else ifeq '$(FLASH_TYPE)' 'QSPI'
     MODEL_L3_FLASH=AT_MEM_L3_QSPIFLASH
@@ -128,17 +138,6 @@ NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_demo
 GRU?=1
 #endif 
 DEMO?=0
-
-
-ifeq ($(APP_MODE), 0)
-	DEMO 		= 1
-	FLASH_TYPE 	= MRAM
-	RAM_TYPE   	= DEFAULT
-	FREQ_CL		= 240
-	FREQ_FC		= 240
-	FREQ_SFU    = 240
-	VOLTAGE		= 650
-endif
 
 #############################################
 ### NN experiment setup

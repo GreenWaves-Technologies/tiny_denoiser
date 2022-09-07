@@ -45,12 +45,27 @@ Nodes:
     graph_pdm_inout__Resampler_output = Node(RESAMPLER.1, 3, 0); // 16 KHz PCM -> 48 KHz PCM out
     Out1 = Node(PDM_OUT, 4, Modulator_Lin); // 48 KHz PCM -> 3.072 MHZ Pdm Out
 
+    Norm = Node(NORMSAT.0);
+    Lim1 = Node(LIMITER, 3, Lim1);
+
+Configure:
+    
+    In_1.EnableRTCheck = 1;
+    //Out1.EnableRTCheck = 1;
+    Norm.EnableSat = 1;
+    Norm.Precision = 24;
+    Norm.Scaling = 0;
+    Lim1.Decimation = 20;
+
+
 Connects:
     Connect(In1, graph_pdm_inout__Resampler_output);
     Connect(graph_pdm_inout__Resampler_output, Out1);
 
     Connect(In_1, graph_pdm_inout__Resampler_input);
-    Connect(graph_pdm_inout__Resampler_input, Out_1);
+    Connect(graph_pdm_inout__Resampler_input, Lim1);
+    Connect(Lim1, Norm);
+    Connect(Norm, Out_1);
 
 SFU_CloseGraph();
 
