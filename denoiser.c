@@ -270,6 +270,8 @@ static void RunDenoiser()
         filter the STFT_Spectrogram with the mask in STFT_Magnitude
         if STFT_Magnitude[i] == 1.0 the filtering does not apply
     */
+            ta = gap_cl_readhwtimer();
+
     for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
         //#ifdef AUDIO_EVK
         
@@ -284,6 +286,8 @@ static void RunDenoiser()
         }
         //#endif
     }    
+        ti = gap_cl_readhwtimer() - ta;
+    PRINTF("%45s: Cycles: %10d\n","Denoising applicatio: ", ti );
 }
 
 
@@ -294,13 +298,13 @@ static void RunDenoiser()
 
     // FIXME: to tune it!!
     #define Q_BIT_IN 27
-    #define Q_BIT_OUT (Q_BIT_IN)
+    #define Q_BIT_OUT (Q_BIT_IN-3)
 
     #define BUFF_SIZE (FRAME_STEP*4)
     #define CHUNK_NUM (8)
 
     //This should be equal to FRAME_SIZE/FRAME_STEP + 1
-    #define STRUCT_DELAY (5)
+    #define STRUCT_DELAY (1)
 
     #define SAI_ITF_IN         (1)
     #define SAI_ITF_OUT        (2)
@@ -440,6 +444,13 @@ void denoiser(void)
     struct pi_cluster_conf cl_conf;
     pi_cluster_conf_init(&cl_conf);
     cl_conf.cc_stack_size = STACK_SIZE;
+        cl_conf.id = 0;                /* Set cluster ID. */
+                       // Enable the special icache for the master core
+    cl_conf.icache_conf = PI_CLUSTER_MASTER_CORE_ICACHE_ENABLE |   
+                       // Enable the prefetch for all the cores, it's a 9bits mask (from bit 2 to bit 10), each bit correspond to 1 core
+                       PI_CLUSTER_ICACHE_PREFETCH_ENABLE |      
+                       // Enable the icache for all the cores
+                       PI_CLUSTER_ICACHE_ENABLE;
     pi_open_from_conf(&cluster_dev, (void *) &cl_conf);
     if (pi_cluster_open(&cluster_dev))
     {
@@ -901,6 +912,8 @@ void denoiser(void)
         for (int i= 0 ; i<FRAME_SIZE; i++){
 #if IS_SFU == 1
             // overlap and add using temporary buffer
+            // use Audio_Frame to store an output frame
+            //Audio_Frame_temp[i] = DRY * (STFT_Spectrogram[i] / 2 ) + (1-DRY)* Audio_Frame[i];   // FIXME: divide by 2 because of current Hanning windowing
             Audio_Frame_temp[i] += (STFT_Spectrogram[i] / 2 );   // FIXME: divide by 2 because of current Hanning windowing
 #else
             // use Audio_Frame to store an output frame
