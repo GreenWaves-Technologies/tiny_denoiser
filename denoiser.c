@@ -141,7 +141,8 @@ static int ads1014_write(pi_device_t *dev, uint8_t addr, uint16_t value)
     return pi_i2c_write(dev, buffer, 3, PI_I2C_XFER_START | PI_I2C_XFER_STOP);
 }
 
-int init_ads1014(pi_device_t *i2c){
+int init_ads1014(pi_device_t *i2c)
+{
     struct pi_i2c_conf conf;
     pi_i2c_conf_init(&conf);
     conf.itf = 1;
@@ -153,7 +154,7 @@ int init_ads1014(pi_device_t *i2c){
     uint16_t expected = (1 << 15) | (0 << 12) | (2 << 9) | (7 << 5) | 3;
     ads1014_write(i2c, 1, expected);
 
-
+    return 0;
 }
 
 
@@ -270,8 +271,9 @@ static void RunDenoiser()
         filter the STFT_Spectrogram with the mask in STFT_Magnitude
         if STFT_Magnitude[i] == 1.0 the filtering does not apply
     */
-            ta = gap_cl_readhwtimer();
-
+    #   ifdef PERF
+    ta = gap_cl_readhwtimer();
+    #endif
     for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
         //#ifdef AUDIO_EVK
         
@@ -286,8 +288,10 @@ static void RunDenoiser()
         }
         //#endif
     }    
-        ti = gap_cl_readhwtimer() - ta;
+    #   ifdef PERF
+    ti = gap_cl_readhwtimer() - ta;
     PRINTF("%45s: Cycles: %10d\n","Denoising applicatio: ", ti );
+    #endif
 }
 
 
@@ -388,15 +392,16 @@ void denoiser(void)
         /****
         Change Frequency if needed
     ****/
-#ifdef AUDIO_EVK
-    pi_pmu_voltage_set(PI_PMU_VOLTAGE_DOMAIN_CHIP, VOLTAGE);
-    pi_pmu_voltage_set(PI_PMU_VOLTAGE_DOMAIN_CHIP, VOLTAGE);
-#endif 
  
     // Voltage-Frequency settings
     uint32_t voltage =VOLTAGE;
     pi_freq_set(PI_FREQ_DOMAIN_FC,      FREQ_FC*1000*1000);
     pi_freq_set(PI_FREQ_DOMAIN_PERIPH,  FREQ_FC*1000*1000);
+
+#ifdef AUDIO_EVK
+    pi_pmu_voltage_set(PI_PMU_VOLTAGE_DOMAIN_CHIP, VOLTAGE);
+    pi_pmu_voltage_set(PI_PMU_VOLTAGE_DOMAIN_CHIP, VOLTAGE);
+#endif 
 
     //PMU_set_voltage(voltage, 0);
     printf("Set VDD voltage as %.2f, FC Frequency as %d MHz, CL Frequency = %d MHz\n", 
@@ -472,11 +477,11 @@ void denoiser(void)
     pi_task_block(&proc_task);
 
     // Drive pad with 12 mAP to have less noise
-    uint32_t *Magic_Setting_0 = 0x1A104064;
+    uint32_t *Magic_Setting_0 = (uint32_t *)0x1A104064;
     *Magic_Setting_0 = 3 << 2 | 3 << 10 | 3 << 18 | 3 << 26;
 
     // SAI 2 -> Drive pad with 12 mAP to have less noise
-    uint32_t *Magic_Setting = 0x1A104068;
+    uint32_t *Magic_Setting = (uint32_t *)0x1A104068;
     *Magic_Setting = 3 << 10 | 3 << 18;
     
     //pi_task_block(&proc_task);
@@ -531,7 +536,7 @@ void denoiser(void)
     if(setup_dac(0) || setup_dac(1))
     {
         printf("Failed to setup DAC\n");
-        return -1;
+        pmsis_exit(-1);
     }
     pi_time_wait_us(100000);
     //printf("Setup DAC OK\n"); 

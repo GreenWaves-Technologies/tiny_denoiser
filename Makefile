@@ -134,7 +134,9 @@ MODEL_FP16=1
 MODEL_SQ8=1
 
 NNTOOL_EXTRA_FLAGS=--use_lut_sigmoid --use_lut_tanh
-NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_demo
+#To use the full presixion FP16 you can use the nntool_script_demo_f16 instead of nntool_script_demo_mixed_precision
+#NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_demo_f16
+NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_demo_mixed_precision
 GRU?=1
 #endif 
 DEMO?=0
