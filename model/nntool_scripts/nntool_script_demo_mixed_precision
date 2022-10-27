@@ -5,7 +5,7 @@ fusions --scale8
 nodeoption GRU_74 RNN_STATES_AS_INPUTS 1
 nodeoption GRU_136 RNN_STATES_AS_INPUTS 1
 
-#run_pyscript model/nntool_scripts/collect_stats.py samples/quant/ 8 $(GRU) $(MODEL_BUILD)/ $(H_STATE_LEN)
+run_pyscript model/nntool_scripts/collect_stats.py samples/quant/ 8 $(GRU) $(MODEL_BUILD)/ $(H_STATE_LEN)
 aquant --stats $(MODEL_BUILD)/data_quant.json
 
 qtune --step * clip_type=none
@@ -20,11 +20,6 @@ qtune --step Conv_139_fusion scheme=float float_type=float16
 qtune --step Conv_142_fusion scheme=float float_type=float16 
 qtune --step Conv_142_reshape_out scheme=float float_type=float16 
 qtune --step output_1 scheme=float float_type=float16 
-
-## uncomment this for higher accuracy
-#fquant
-#qtune --step * scheme=float float_type=float16
-
 
 qshow
 
