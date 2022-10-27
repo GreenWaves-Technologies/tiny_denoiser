@@ -387,6 +387,7 @@ graph: $(TARGET_BUILD_DIR)/GraphINOUT_L2_Descr.c
 
 # all depends on the model
 all:: | model gen_fft_code graph
+build:: | model gen_fft_code graph
 
 clean:: clean_model clean_fft_code
 	rm -rf BUILD*
