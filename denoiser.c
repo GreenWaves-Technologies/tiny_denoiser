@@ -332,7 +332,7 @@ static void RunDenoiser()
     volatile int done;
     int nb_transfers;
     int current_size[2];
-    static pi_task_t proc_task;
+    static pi_event_t proc_task;
 
 
     static int open_i2s_PDM(struct pi_device *i2s, unsigned int SAIn, unsigned int Frequency, unsigned int Polarity, unsigned int Diff)
@@ -376,7 +376,7 @@ static void RunDenoiser()
             SFU_GraphResetInputs(&SFU_RTD(GraphINOUT));
         }
 
-            pi_task_push(&proc_task);
+            pi_evt_push(&proc_task);
     }
 
 #endif // IS_SFU == 1 
@@ -474,7 +474,7 @@ void denoiser(void)
     struct pi_device i2s_out;
     int Status;
     int Trace = 0;
-    pi_task_block(&proc_task);
+    pi_evt_sig_init(&proc_task);
 
     // Drive pad with 12 mAP to have less noise
     uint32_t *Magic_Setting_0 = (uint32_t *)0x1A104064;
@@ -484,7 +484,6 @@ void denoiser(void)
     uint32_t *Magic_Setting = (uint32_t *)0x1A104068;
     *Magic_Setting = 3 << 10 | 3 << 18;
     
-    //pi_task_block(&proc_task);
     // Configure PDM in
     if (open_i2s_PDM(&i2s_in, SAI_ITF_IN,   3072000, 3, 0)) return -1;
     // Configure PDM out
@@ -704,7 +703,7 @@ void denoiser(void)
     SFU_StartGraph(&SFU_RTD(GraphINOUT));
     while(1){
         slider_value = ads1014_read(i2c_slider, 0);
-        pi_task_wait_on(&proc_task);
+        pi_evt_wait_on(&proc_task);
 
 #ifdef AUDIO_EVK
         pi_gpio_pin_write(&gpio_port, gpio_pin_o, 1);
@@ -936,7 +935,7 @@ void denoiser(void)
         pi_gpio_pin_write(&gpio_port, gpio_pin_o, 0);
 #endif
         chunk_in_cnt++;
-        pi_task_block(&proc_task);
+        pi_evt_sig_init(&proc_task);
 
 
 #else // audio from file 
