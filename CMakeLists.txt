@@ -74,7 +74,7 @@ elseif(CONFIG_DSP_WAV)
         set(IS_SFU                      0)
         set(IS_INPUT_STFT               0)
         set(DISABLE_NN_INFERENCE        1)
-        set(STFT_FRAMES                10)
+        set(STFT_FRAMES                 1)
 
         set(CONFIG_IO_TYPE_SEMIHOSTING  y)
 
@@ -83,7 +83,7 @@ elseif(CONFIG_NN_TEST)
         set(IS_SFU                      0)
         set(IS_INPUT_STFT               1)
         set(DISABLE_NN_INFERENCE        0)
-        set(STFT_FRAMES                10)
+        set(STFT_FRAMES                 1)
 
         set(CONFIG_IO_TYPE_SEMIHOSTING  y)
 
@@ -287,6 +287,9 @@ list(APPEND TARGET_PREPROCESSOR -DGRU)
 endif()
 if (${CONFIG_SILENT})
 list(APPEND TARGET_PREPROCESSOR -DSILENT)
+endif()
+if (${CONFIG_CHECKSUM})
+list(APPEND TARGET_PREPROCESSOR -DCHECKSUM)
 endif()
 
 

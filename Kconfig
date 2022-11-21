@@ -71,6 +71,10 @@ menu "DENOISER APP menu"
 
     endchoice
 
+    config CHECKSUM
+        bool "Enable Checksum for CI purpose"
+        default n
+
     config GRU
         bool "Use GRU model based (otherwise: LSTM)"
         default y

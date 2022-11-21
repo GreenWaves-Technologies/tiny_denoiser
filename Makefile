@@ -396,6 +396,6 @@ clean:: clean_model clean_fft_code
 include common/model_rules.mk
 
 # $(info APP_SRCS... $(APP_SRCS))
-# $(info APP_CFLAGS... $(APP_CFLAGS))
+$(info APP_CFLAGS... $(APP_CFLAGS))
 
 include $(RULES_DIR)/pmsis_rules.mk

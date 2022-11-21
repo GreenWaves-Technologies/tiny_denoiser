@@ -1,5 +1,5 @@
 name: denoiser
-# builder: cmake
+builder: cmake
 boards: []
 platforms: 
     - board
@@ -9,34 +9,34 @@ os:
 chips: 
     - gap9
 variants:
-    dsp_test:
-        name: denoiser_dsp_test
-        tags:
-            - integration
-            - release
-        duration: standard
-        flags: APP_MODE=2 GRU=0 QUANT_BITS=FP16 SILENT=1 STFT_FRAMES=1
-    nn_test:
-        name: denoiser_nn_test
-        tags:
-            - integration
-            - release
-        duration: standard
-        flags: APP_MODE=3 GRU=0 QUANT_BITS=FP16 SILENT=1 STFT_FRAMES=1
-
     # dsp_test:
     #     name: denoiser_dsp_test
     #     tags:
     #         - integration
     #         - release
     #     duration: standard
-    #     flags: CONFIG_DEMO=0 CONFIG_DENOISE_WAV=1 CONFIG_FP16=1 CONFIG_SILENT=1 STFT_FRAMES=1
+    #     flags: APP_MODE=2 GRU=0 QUANT_BITS=FP16 SILENT=1 STFT_FRAMES=1
     # nn_test:
     #     name: denoiser_nn_test
     #     tags:
     #         - integration
     #         - release
     #     duration: standard
-    #     flags: CONFIG_DEMO=0 CONFIG_DSP_WAV=1 CONFIG_FP16=1 CONFIG_SILENT=1 STFT_FRAMES=1
+    #     flags: APP_MODE=3 GRU=0 QUANT_BITS=FP16 SILENT=1 STFT_FRAMES=1
+
+    dsp_test:
+        name: denoiser_dsp_test
+        tags:
+            - integration
+            - release
+        duration: standard
+        flags: CONFIG_DEMO=0 CONFIG_DENOISE_WAV=1 CONFIG_FP16=1 CONFIG_SILENT=1 STFT_FRAMES=1
+    nn_test:
+        name: denoiser_nn_test
+        tags:
+            - integration
+            - release
+        duration: standard
+        flags: CONFIG_DEMO=0 CONFIG_DSP_WAV=1 CONFIG_FP16=1 CONFIG_SILENT=1 STFT_FRAMES=1
     
 
