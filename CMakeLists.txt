@@ -282,7 +282,7 @@ list(APPEND TARGET_PREPROCESSOR -DPERF
                                 -DMAX_L2_BUFFER=${CONFIG_MODEL_L2_MEMORY}
                                 -DDEMO=${DEMO}
                                 -DH_STATE_LEN=${H_STATE_LEN}
-                                -DBUILD_DIR="../"
+                                -DBUILD_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
                                 -DSTD_FLOAT
 )
 if (${GRU_FLAG} EQUAL 1)
@@ -305,7 +305,7 @@ add_executable(${TARGET_NAME} ${TARGET_SRCS})
 target_compile_options(${TARGET_NAME} PUBLIC    ${TARGET_CFLAGS} 
                                                 ${TARGET_INCS}
                                                 ${TARGET_PREPROCESSOR})
-
+message(STATUS ${TARGET_PREPROCESSOR})
 
 ###############################################################################
 # CMake post initialization

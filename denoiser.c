@@ -1036,6 +1036,7 @@ int denoiser(void)
     pi_cluster_close(&cluster_dev);
     PRINTF("Ended\n");
     pmsis_exit(0);
+    return 0;
 }
 
 
