@@ -6,3 +6,4 @@ kws_ds_cnn_emul
 *.ipynb_checkpoints
 test.pgm
 BUILD*
+build

@@ -13,7 +13,7 @@
 #include "Gap.h"
 #include "bsp/ram.h"
 #include <bsp/fs/hostfs.h>
-#include "wavIO.h" 
+#include "gaplib/wavIO.h" 
 
 // Autotiler NN functions
 #include "RFFTKernels.h"
@@ -385,7 +385,7 @@ static void RunDenoiser()
 
 
 
-void denoiser(void)
+int denoiser(void)
 {
     printf("Entering main controller\n");
 
@@ -440,6 +440,7 @@ void denoiser(void)
         printf("Error ram open !\n");
         pmsis_exit(-3);
     }
+    printf("RAM Opened\n");
 
     /****
         Configure And open cluster. 
@@ -462,6 +463,7 @@ void denoiser(void)
         PRINTF("Cluster open failed !\n");
         pmsis_exit(-4);
     }
+    printf("Cluster Opened\n");
     pi_freq_set(PI_FREQ_DOMAIN_CL, FREQ_CL*1000*1000);
 
 
@@ -839,7 +841,7 @@ void denoiser(void)
         {
             unsigned int TotalCycles = 0, TotalOper = 0;
             PRINTF("\n");
-            for (int i=0; i<(sizeof(AT_GraphPerf)/sizeof(unsigned int)); i++) {
+            for (unsigned int i=0; i<(sizeof(AT_GraphPerf)/sizeof(unsigned int)); i++) {
                 PRINTF("%45s: Cycles: %10d, Operations: %10d, Operations/Cycle: %f\n", 
                     AT_GraphNodeNames[i], AT_GraphPerf[i], AT_GraphOperInfosNames[i], 
                     ((float) AT_GraphOperInfosNames[i])/ AT_GraphPerf[i]);

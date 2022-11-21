@@ -5,6 +5,8 @@
 import numpy as np
 import librosa
 import sys, os
+from tqdm import tqdm
+import logging
 
 #import nntool APIs
 from nntool.execution.graph_executer import GraphExecuter
@@ -19,7 +21,7 @@ quantization_bits = sys.argv[2]
 gru = int(sys.argv[3])
 h_state_len = int(sys.argv[5])
 
-print(gru)
+print(f"gru mode: ${gru}")
 
 path_model_build = sys.argv[4]
 print(path_model_build)
@@ -51,8 +53,9 @@ stats_collector = ActivationRangesCollector(use_ema=use_ema)
 G.quantization = None
 
 
-
-for filename in os.listdir(quant_sample_path):
+files = os.listdir(quant_sample_path)
+for c, filename in enumerate(files):
+	print(f"Collecting Stats from file {c+1}/{len(files)}")
 	input_file = quant_sample_path + filename
 	data, _ = librosa.load(input_file, sr=SR)
 	stft = librosa.stft(data, n_fft=512, hop_length=100, win_length=400, 
@@ -73,7 +76,7 @@ for filename in os.listdir(quant_sample_path):
 	lim_3 = 0
 
 
-	for i in range(len_seq): 
+	for i in tqdm(range(len_seq)): 
 		single_mags = rstft[:,i]
 
 		if gru == 1:
@@ -93,26 +96,26 @@ for filename in os.listdir(quant_sample_path):
 			lstm_1_i_state = outputs[G['LSTM_144'].step_idx][0]
 			lstm_1_c_state = outputs[G['output_3'].step_idx][0]
 		
-		print(lstm_0_i_state.shape)
+		logging.debug(lstm_0_i_state.shape)
 
 
 		# debug monitor lstm state quantization
 		if gru == 0:
 			max_stats = np.max(np.abs(lstm_0_c_state))
 			lim_1 = max_stats if max_stats > lim_1 else lim_1
-			print('rnn_0_c_state | Sample: ',i,', Max: ', max_stats, 'Glob Max', lim_1)
+			logging.debug('rnn_0_c_state | Sample: ',i,', Max: ', max_stats, 'Glob Max', lim_1)
 
 			max_stats = np.max(np.abs(lstm_1_c_state))
 			lim_3 = max_stats if max_stats > lim_3 else lim_3
-			print('rnn_1_c_state | Sample: ',i,', Max: ', max_stats, 'Glob Max', lim_3)
+			logging.debug('rnn_1_c_state | Sample: ',i,', Max: ', max_stats, 'Glob Max', lim_3)
 
 		max_stats = np.max(np.abs(lstm_0_i_state))
 		lim_0 = max_stats if max_stats > lim_0 else lim_0    
-		print('rnn_0_i_state | Sample: ',i,', Max: ', max_stats, 'Glob Max', lim_0)
+		logging.debug('rnn_0_i_state | Sample: ',i,', Max: ', max_stats, 'Glob Max', lim_0)
 
 		max_stats = np.max(np.abs(lstm_1_i_state))
 		lim_2 = max_stats if max_stats > lim_2 else lim_2   
-		print('rnn_1_i_state | Sample: ',i,', Max: ', max_stats, 'Glob Max', lim_2)
+		logging.debug('rnn_1_i_state | Sample: ',i,', Max: ', max_stats, 'Glob Max', lim_2)
 	
 
 # get quantization stas and dump to file

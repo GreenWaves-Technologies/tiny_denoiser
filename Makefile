@@ -132,11 +132,13 @@ QUANT_BITS?=FP16MIXED
 MODEL_PREFIX=denoiser_dns
 MODEL_FP16=1
 MODEL_SQ8=1
+COLLECT_STATS_SCRIPT=model/nntool_scripts/collect_stats.py
+SAMPLES_QUANT=samples/quant/
 
 NNTOOL_EXTRA_FLAGS=--use_lut_sigmoid --use_lut_tanh
-#To use the full presixion FP16 you can use the nntool_script_demo_f16 instead of nntool_script_demo_mixed_precision
-#NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_demo_f16
-NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_demo_mixed_precision
+#To use the full presixion FP16 you can use the nntool_script_f16_demo instead of nntool_script_fp16_mixed_demo
+#NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_f16_demo
+NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_fp16_mixed_demo
 GRU?=1
 #endif 
 DEMO?=0
@@ -169,7 +171,7 @@ ifeq ($(shell expr $(APP_MODE) \>= 2), 1)
 		ifeq ($(GRU), 0)
 			NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_fp16_mixed
 		else
-			NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_fp16_gru_mixed
+			NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_fp16_mixed_gru
 		endif
 
 	else ifeq 	'$(QUANT_BITS)' '8'
@@ -288,7 +290,7 @@ APP_SRCS += BUILD_MODEL_STFT/RFFTKernels.c
 APP_CFLAGS += -O2 -s -mno-memcpy -fno-tree-loop-distribute-patterns 
 
 #include paths
-APP_CFLAGS += -Icommon -I$(GAP_SDK_HOME)/libs/gap_lib/include/gaplib/
+APP_CFLAGS += -Icommon -I$(GAP_SDK_HOME)/libs/gap_lib/include/
 APP_CFLAGS += -I. -I$(MODEL_COMMON_INC) -I$(TILER_EMU_INC) -I$(TILER_INC) -I$(MODEL_BUILD) $(CNN_LIB_INCLUDE)
 APP_CFLAGS += -I$(MFCC_GENERATOR) -I$(TILER_DSP_KERNEL_PATH) -I$(TILER_DSP_KERNEL_PATH)/LUT_Tables
 APP_CFLAGS += -IBUILD_MODEL_STFT
@@ -301,7 +303,6 @@ APP_CFLAGS += -DFREQ_FC=$(FREQ_FC) -DFREQ_CL=$(FREQ_CL) -DFREQ_SFU=$(FREQ_SFU) -
 APP_CFLAGS += -DAT_IMAGE=$(IMAGE) -DWAV_FILE=$(WAV_FILE) #-DWRITE_WAV #-DPRINT_AT_INPUT #-DPRINT_WAV 
 
 APP_CFLAGS += -DIS_SFU=$(IS_SFU)
-APP_CFLAGS += -DIS_AUDIO_FILE=$(IS_AUDIO_FILE)
 APP_CFLAGS += -DIS_INPUT_STFT=$(IS_INPUT_STFT)
 
 APP_CFLAGS += -DSTFT_FRAMES=$(STFT_FRAMES)

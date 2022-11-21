@@ -9,7 +9,7 @@ nodeoption LSTM_144 LSTM_OUTPUT_C_STATE 1
 show
 
 
-run_pyscript model/nntool_scripts/collect_stats.py samples/quant/ 8 $(GRU) $(MODEL_BUILD)/ $(H_STATE_LEN)
+run_pyscript $(COLLECT_STATS_SCRIPT) $(SAMPLES_QUANT) 8 $(GRU) $(MODEL_BUILD)/ $(H_STATE_LEN)
 aquant --stats $(MODEL_BUILD)/data_quant.json 
 
 
