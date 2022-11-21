@@ -30,13 +30,13 @@ variants:
             - integration
             - release
         duration: standard
-        flags: CONFIG_DEMO=0 CONFIG_DENOISE_WAV=1 CONFIG_FP16=1 CONFIG_SILENT=1 STFT_FRAMES=1
+        flags: CONFIG_DEMO=0 CONFIG_DSP_WAV=1 CONFIG_FP16=1 CONFIG_SILENT=1 CONFIG_CHECKSUM=1 CONFIG_MODEL_DSP_FLOAT16_TYPE_BFLOAT16=n
     nn_test:
         name: denoiser_nn_test
         tags:
             - integration
             - release
         duration: standard
-        flags: CONFIG_DEMO=0 CONFIG_DSP_WAV=1 CONFIG_FP16=1 CONFIG_SILENT=1 STFT_FRAMES=1
+        flags: CONFIG_DEMO=0 CONFIG_NN_TEST=1 CONFIG_FP16=1 CONFIG_SILENT=1 CONFIG_CHECKSUM=1 CONFIG_MODEL_DSP_FLOAT16_TYPE_BFLOAT16=n
     
 

@@ -68,6 +68,7 @@ elseif(CONFIG_DENOISE_WAV)
         set(STFT_FRAMES                 1)
 
         set(CONFIG_IO_TYPE_SEMIHOSTING  y)
+        set(WAV_FILE samples/real_samples/phone_call.wav)
 
 elseif(CONFIG_DSP_WAV)
         set(DEMO                        0)
@@ -77,6 +78,7 @@ elseif(CONFIG_DSP_WAV)
         set(STFT_FRAMES                 1)
 
         set(CONFIG_IO_TYPE_SEMIHOSTING  y)
+        set(WAV_FILE samples/dataset/noisy/p232_050.wav)
 
 elseif(CONFIG_NN_TEST)
         set(DEMO                        0)
@@ -280,10 +282,14 @@ list(APPEND TARGET_PREPROCESSOR -DPERF
                                 -DMAX_L2_BUFFER=${CONFIG_MODEL_L2_MEMORY}
                                 -DDEMO=${DEMO}
                                 -DH_STATE_LEN=${H_STATE_LEN}
+                                -DBUILD_DIR="../"
                                 -DSTD_FLOAT
 )
 if (${GRU_FLAG} EQUAL 1)
 list(APPEND TARGET_PREPROCESSOR -DGRU)
+endif()
+if (${DISABLE_NN_INFERENCE})
+list(APPEND TARGET_PREPROCESSOR -DDISABLE_NN_INFERENCE)
 endif()
 if (${CONFIG_SILENT})
 list(APPEND TARGET_PREPROCESSOR -DSILENT)

@@ -779,7 +779,7 @@ int denoiser(void)
     for(int frame_id = 0; frame_id<STFT_FRAMES; frame_id++){
 
         PRINTF("Reading STFT file %.4d/%d...\n", frame_id, STFT_FRAMES );
-        sprintf(WavName, "../../../samples/mags_%.4d.bin",frame_id);
+        sprintf(WavName, "%s/samples/mags_%.4d.bin",BUILD_DIR,frame_id);
         printf("File being read is : %s\n", WavName);
 
         file[0] = pi_fs_open(&fs, WavName, 0);
@@ -1023,7 +1023,7 @@ int denoiser(void)
     }
     PRINTF("\n");
 
-    WriteWavToFile("../../../test_gap.wav", 16, 16000, 1, 
+    WriteWavToFile("%s/test_gap.wav", BUILD_DIR, 16, 16000, 1, 
         (uint32_t *) __PREFIX(_L2_Memory), num_samples* sizeof(short));
     printf("Writing wav file to test_gap.wav completed successfully\n");
 #endif //CHECKSUM
