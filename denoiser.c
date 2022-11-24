@@ -534,7 +534,7 @@ int denoiser(void)
     fxl6408_setup();
 
     // Setup 2 DAC
-    if(setup_dac(0) || setup_dac(1))
+    if(setup_dac((0x34 << 1)) || setup_dac((0x36 << 1)))
     {
         printf("Failed to setup DAC\n");
         pmsis_exit(-1);
