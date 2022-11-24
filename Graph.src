@@ -42,8 +42,12 @@ Nodes:
     Out_1 = Node(MEM_OUT);
 
     In1 = Node(MEM_IN);
-    graph_pdm_inout__Resampler_output = Node(RESAMPLER.1, 3, 0); // 16 KHz PCM -> 48 KHz PCM out
+    graph_pdm_inout__Resampler_output1 = Node(RESAMPLER.1, 3, 0); // 16 KHz PCM -> 48 KHz PCM out
     Out1 = Node(PDM_OUT, 4, Modulator_Lin); // 48 KHz PCM -> 3.072 MHZ Pdm Out
+
+    In2 = Node(MEM_IN);
+    graph_pdm_inout__Resampler_output2 = Node(RESAMPLER.2, 3, 0); // 16 KHz PCM -> 48 KHz PCM out
+    Out2 = Node(PDM_OUT, 4, Modulator_Lin); // 48 KHz PCM -> 3.072 MHZ Pdm Out
 
     Norm = Node(NORMSAT.0);
     Lim1 = Node(LIMITER, 3, Lim1);
@@ -59,8 +63,11 @@ Configure:
 
 
 Connects:
-    Connect(In1, graph_pdm_inout__Resampler_output);
-    Connect(graph_pdm_inout__Resampler_output, Out1);
+    Connect(In1, graph_pdm_inout__Resampler_output1);
+    Connect(graph_pdm_inout__Resampler_output1, Out1);
+
+    Connect(In2, graph_pdm_inout__Resampler_output2);
+    Connect(graph_pdm_inout__Resampler_output2, Out2);
 
     Connect(In_1, graph_pdm_inout__Resampler_input);
     Connect(graph_pdm_inout__Resampler_input, Lim1);

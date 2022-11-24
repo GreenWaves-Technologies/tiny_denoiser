@@ -309,9 +309,15 @@ static void RunDenoiser()
 
     //This should be equal to FRAME_SIZE/FRAME_STEP + 1
     #define STRUCT_DELAY (1)
+    
+    #define SAI1         (1)
+    #define SAI2         (2)
 
-    #define SAI_ITF_IN         (1)
-    #define SAI_ITF_OUT        (2)
+
+    #define SAI_ITF_IN         (SAI1)
+    #define SAI_ITF_OUT_1        (SAI2)
+    #define SAI_ITF_OUT_2       (SAI1)
+
 
     #define SAI_ID               (48)
     #define SAI_SCK(itf)         (48+(itf*4)+0)
@@ -372,7 +378,9 @@ static void RunDenoiser()
         
         if(chunk_in_cnt==STRUCT_DELAY){
             //pi_time_wait_us(5000);
+
             SFU_Enqueue_uDMA_Channel_Multi(ChanOutCtxt_0, CHUNK_NUM, BufferOutList, BUFF_SIZE, 0);
+            SFU_Enqueue_uDMA_Channel_Multi(ChanOutCtxt_1, CHUNK_NUM, BufferOutList, BUFF_SIZE, 0);
             SFU_GraphResetInputs(&SFU_RTD(GraphINOUT));
         }
 
@@ -472,8 +480,8 @@ int denoiser(void)
     /****
         Setup the SFU for PDM in/out
     ****/
-    struct pi_device i2s_in;
-    struct pi_device i2s_out;
+    struct pi_device i2s_sai1;
+    struct pi_device i2s_sai2;
     int Status;
     int Trace = 0;
     pi_evt_sig_init(&proc_task);
@@ -487,14 +495,18 @@ int denoiser(void)
     *Magic_Setting = 3 << 10 | 3 << 18;
     
     // Configure PDM in
-    if (open_i2s_PDM(&i2s_in, SAI_ITF_IN,   3072000, 3, 0)) return -1;
+    if (open_i2s_PDM(&i2s_sai1, SAI1,   3072000, 2, 0)) return -1;
+
     // Configure PDM out
-    if (open_i2s_PDM(&i2s_out, SAI_ITF_OUT, 3072000, 0, 0)) return -1;
+    if (open_i2s_PDM(&i2s_sai2, SAI2, 3072000, 0, 0)) return -1;
+
 
     StartSFU(FREQ_SFU*1000*1000, 1);
 
     ChanInCtxt_0   = (SFU_uDMA_Channel_T *) pi_l2_malloc(sizeof(SFU_uDMA_Channel_T));
     ChanOutCtxt_0  = (SFU_uDMA_Channel_T *) pi_l2_malloc(sizeof(SFU_uDMA_Channel_T));
+    ChanOutCtxt_1  = (SFU_uDMA_Channel_T *) pi_l2_malloc(sizeof(SFU_uDMA_Channel_T));
+
     
     
     BufferInList = (void*) pi_l2_malloc(sizeof(void*)*CHUNK_NUM);
@@ -510,24 +522,28 @@ int denoiser(void)
     
     // Get uDMA channels for GraphOUT
     SFU_Allocate_uDMA_Channel(ChanOutCtxt_0, 0, &SFU_RTD(GraphINOUT));
-    //SFU_uDMA_Channel_Callback(ChanOutCtxt_0, handle_sfu_out_0_end, ChanOutCtxt_0);
+    SFU_Allocate_uDMA_Channel(ChanOutCtxt_1, 0, &SFU_RTD(GraphINOUT));
     
     // Connect Channels to SFU for Mic IN (PDM IN)
     SFU_GraphConnectIO(SFU_Name(GraphINOUT, In_1), SAI_ITF_IN, 2, &SFU_RTD(GraphINOUT));
     SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out_1), ChanInCtxt_0->ChannelId, 0, &SFU_RTD(GraphINOUT));
     
 
-    // Connect Channels to SFU for PDM OUT
+    // Connect Channels to SFU for PDM OUT 1
     Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, In1), ChanOutCtxt_0->ChannelId, 0, &SFU_RTD(GraphINOUT));
-    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT, 1, &SFU_RTD(GraphINOUT));
+    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT_1, 0, &SFU_RTD(GraphINOUT));
+
+    // Connect Channels to SFU for PDM OUT 2
+    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, In2), ChanOutCtxt_1->ChannelId, 0, &SFU_RTD(GraphINOUT));
+    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out2), SAI_ITF_OUT_2, 0, &SFU_RTD(GraphINOUT));
 
     //Next API will have a value to replace this high number with -1
     //To be able to 
     SFU_Enqueue_uDMA_Channel_Multi(ChanInCtxt_0, CHUNK_NUM, BufferInList, BUFF_SIZE, 0);
 
             //Starting In and Out Graphs
-    pi_i2s_ioctl(&i2s_in, PI_I2S_IOCTL_START, NULL);
-    pi_i2s_ioctl(&i2s_out, PI_I2S_IOCTL_START, NULL);
+    pi_i2s_ioctl(&i2s_sai1, PI_I2S_IOCTL_START, NULL);
+    pi_i2s_ioctl(&i2s_sai2, PI_I2S_IOCTL_START, NULL);
 
     
 
