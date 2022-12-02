@@ -41,8 +41,6 @@ AT_DEFAULTFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 
 #ifdef AUDIO_EVK
     // GPIO defines
-    struct pi_device gpio_port;
-    struct pi_device gpio_in;
     pi_gpio_e gpio_pin_o; /* PI_GPIO_A02-PI_GPIO_A05 */
     int val_gpio;
 #endif
@@ -248,7 +246,7 @@ static void RunDenoiser()
           reset: only enabled at the start of the application
     */
 #ifdef AUDIO_EVK
-        pi_gpio_pin_write(&gpio_port, gpio_pin_o, 1);
+        pi_gpio_pin_write( gpio_pin_o, 1);
 #endif
     __PREFIX(CNN)(
 #   ifndef GRU
@@ -263,7 +261,7 @@ static void RunDenoiser()
         STFT_Magnitude
     );
 #ifdef AUDIO_EVK
-        pi_gpio_pin_write(&gpio_port, gpio_pin_o, 0);
+        pi_gpio_pin_write( gpio_pin_o, 0);
 #endif
 
     /* 
@@ -411,20 +409,11 @@ int denoiser(void)
     /****
         Configure GPIO Output.
     ****/
-    struct pi_gpio_conf gpio_conf = {0};
     gpio_pin_o = PI_GPIO_A89; /* PI_GPIO_A02-PI_GPIO_A05 */
 
+    pi_pad_set_function(PI_PAD_089, PI_PAD_FUNC1);
 
-    pi_gpio_conf_init(&gpio_conf);
-    pi_open_from_conf(&gpio_port, &gpio_conf);
-    gpio_conf.port = (gpio_pin_o & PI_GPIO_NUM_MASK) / 32;
-    int errors = pi_gpio_open(&gpio_port);
-    if (errors)
-    {
-        printf("Error opening GPIO %d\n", errors);
-        pmsis_exit(errors);
-    }
-    pi_gpio_pin_configure(&gpio_port, gpio_pin_o, PI_GPIO_OUTPUT);
+    pi_gpio_pin_configure( gpio_pin_o, PI_GPIO_OUTPUT);
 #endif
 
 
@@ -708,7 +697,7 @@ int denoiser(void)
         pi_evt_wait_on(&proc_task);
 
 #ifdef AUDIO_EVK
-        pi_gpio_pin_write(&gpio_port, gpio_pin_o, 1);
+        pi_gpio_pin_write(gpio_pin_o, 1);
 #endif
 
         int round = (chunk_in_cnt%CHUNK_NUM);
@@ -878,7 +867,7 @@ int denoiser(void)
 #endif //CHECKSUM
 
 #ifdef AUDIO_EVK
-        pi_gpio_pin_write(&gpio_port, gpio_pin_o, 0);
+        pi_gpio_pin_write( gpio_pin_o, 0);
 #endif
 
 #endif  // DISABLE_NN_INFERENCE
@@ -888,7 +877,7 @@ int denoiser(void)
 #if IS_INPUT_STFT == 0 // if not loading the STFT
 
 #ifdef AUDIO_EVK
-        pi_gpio_pin_write(&gpio_port, gpio_pin_o, 1);
+        pi_gpio_pin_write( gpio_pin_o, 1);
 #endif
 
         /******
@@ -934,7 +923,7 @@ int denoiser(void)
 
         // block until next input audio frame is ready
 #ifdef AUDIO_EVK
-        pi_gpio_pin_write(&gpio_port, gpio_pin_o, 0);
+        pi_gpio_pin_write( gpio_pin_o, 0);
 #endif
         chunk_in_cnt++;
         pi_evt_sig_init(&proc_task);

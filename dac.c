@@ -65,28 +65,19 @@ int setup_dac(uint8_t id)
 
     /* Choose the right ak4332 with I2C Mux */
     /* The I2C Mux is controlled by the GPIO A68 */
-    struct pi_device gpio_ic_mux;
-    struct pi_gpio_conf gpio_conf = {0};
     pi_gpio_e gpio_pin_o = PI_GPIO_A68; 
 
-    pi_gpio_conf_init(&gpio_conf);
-    pi_open_from_conf(&gpio_ic_mux, &gpio_conf);
-    gpio_conf.port = (gpio_pin_o & PI_GPIO_NUM_MASK) >> 5;
-    if ( pi_gpio_open(&gpio_ic_mux) )
-    {
-        printf("Error opening GPIO \n");
-        return -2;
-    }
+    pi_pad_set_function(PI_PAD_068, PI_PAD_FUNC1);
 
     pi_gpio_flags_e cfg_flags_out = PI_GPIO_OUTPUT|PI_GPIO_PULL_DISABLE|PI_GPIO_DRIVE_STRENGTH_LOW;
 
     /* Configure gpio output. */
-    pi_gpio_pin_configure(&gpio_ic_mux, gpio_pin_o, cfg_flags_out);
+    pi_gpio_pin_configure( gpio_pin_o, cfg_flags_out);
 
     if (id) // Right channel
-        pi_gpio_pin_write(&gpio_ic_mux, gpio_pin_o, 1);
+        pi_gpio_pin_write( gpio_pin_o, 1);
     else    // Left channel
-        pi_gpio_pin_write(&gpio_ic_mux, gpio_pin_o, 0);
+        pi_gpio_pin_write( gpio_pin_o, 0);
 
     int errors = 0;
     pi_device_t i2c;
