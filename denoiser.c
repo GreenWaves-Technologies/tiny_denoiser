@@ -342,7 +342,7 @@ static void RunDenoiser()
         i2s_conf.options = PI_I2S_OPT_REF_CLK_FAST;
         i2s_conf.frame_clk_freq = Frequency;                // In pdm mode, the frame_clk_freq = i2s_clk
         i2s_conf.itf = SAIn;                                // Which sai interface
-        i2s_conf.format |= PI_I2S_FMT_DATA_FORMAT_PDM;      // Choose PDM mode
+        i2s_conf.mode = PI_I2S_MODE_PDM;                    // Choose PDM mode
         i2s_conf.pdm_direction = Direction;                 // 2b'11 slave on both SDI and SDO (SDO under test)
         i2s_conf.pdm_diff = Diff;                           // Set differential mode on pairs (TX only)
 
