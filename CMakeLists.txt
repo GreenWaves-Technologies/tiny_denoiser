@@ -179,7 +179,7 @@ add_custom_command(
         OUTPUT              ${WIN_LUT}
         WORKING_DIRECTORY   ${CMAKE_BINARY_DIR}
         DEPENDS             ${FFT_BUILD_DIR}
-        COMMAND             python $ENV{TILER_MFCC_GEN_LUT_SCRIPT} --fft_lut_file ${WIN_LUT} --win_func "hanning" --dtype "float16" --frame_size ${FRAME_SIZE} --frame_step ${FRAME_STEP} --n_fft ${FRAME_NFFT} --gen_inv
+        COMMAND             python3 $ENV{TILER_MFCC_GEN_LUT_SCRIPT} --fft_lut_file ${WIN_LUT} --win_func "hanning" --dtype "float16" --frame_size ${FRAME_SIZE} --frame_step ${FRAME_STEP} --n_fft ${FRAME_NFFT} --gen_inv
 )
 
 add_custom_command(
