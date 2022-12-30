@@ -5,7 +5,6 @@ Nodes:
     resampler0 = Node(RESAMPLER.0, -3, 0); // 48 KHz PCM -> 16 KHz PCM out
     Out_1 = Node(MEM_OUT);
 
-
     In1 = Node(MEM_IN);
     split = Node(SPLITTER.0, 2); 
     Out0 = Node(STREAM_OUT.0);

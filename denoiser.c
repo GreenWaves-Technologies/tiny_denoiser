@@ -50,7 +50,7 @@ static pi_fs_file_t * file[1];
 static struct pi_device fs;
 static struct pi_device flash;
 pi_device_t* i2c_slider;
-static PI_L2 uint16_t slider_value = 500000;
+static PI_L2 uint16_t slider_value = 0xFFFF;
 
 // datatype for computation
 #define DATATYPE_SIGNAL     float16
@@ -300,7 +300,7 @@ static void RunDenoiser()
 
     // FIXME: to tune it!!
     #define Q_BIT_IN 27
-    #define Q_BIT_OUT (Q_BIT_IN-3)
+    #define Q_BIT_OUT (28)
 
     #define BUFF_SIZE (FRAME_STEP*4)
     #define CHUNK_NUM (8)
@@ -308,8 +308,8 @@ static void RunDenoiser()
     //This should be equal to FRAME_SIZE/FRAME_STEP + 1
     #define STRUCT_DELAY (1)
 
-    #define SAI_ITF_IN         (1)
-    #define SAI_ITF_OUT        (0)
+    #define SAI_ITF_IN         (0)
+    #define SAI_ITF_OUT        (2)
 
     #define SAMPLING_RATE       (16000)
     #define WORD_SIZE           (32)
@@ -357,16 +357,16 @@ static void RunDenoiser()
         if (pi_i2s_open(i2s))
             return -1;
 
-        pi_pad_set_function(SAI_SCK(SAIn),PI_PAD_FUNC0);
-        pi_pad_set_function(SAI_SDI(SAIn),PI_PAD_FUNC0);
-        pi_pad_set_function(SAI_SDO(SAIn),PI_PAD_FUNC0);
-        pi_pad_set_function(SAI_WS(SAIn),PI_PAD_FUNC0);
+        pi_pad_function_set(SAI_SCK(SAIn),PI_PAD_FUNC0);
+        pi_pad_function_set(SAI_SDI(SAIn),PI_PAD_FUNC0);
+        pi_pad_function_set(SAI_SDO(SAIn),PI_PAD_FUNC0);
+        pi_pad_function_set(SAI_WS(SAIn),PI_PAD_FUNC0);
 
         return 0;
     }
 
 
-    static int open_sai_for_telink( struct pi_device *i2s )
+    static int open_sai_for_telink( struct pi_device *i2s, SFU_uDMA_Channel_T **ChanCtxt )
     {
         pi_pad_function_set(SAI_SCK(SAI_ITF_OUT),PI_PAD_FUNC0);
         pi_pad_function_set(SAI_SDI(SAI_ITF_OUT),PI_PAD_FUNC0);
@@ -381,7 +381,7 @@ static void RunDenoiser()
         i2s_conf.itf = SAI_ITF_OUT;
         i2s_conf.slot_width = WORD_SIZE;
         i2s_conf.channels = NB_CHANNELS;
-        i2s_conf.options = PI_I2S_OPT_FULL_DUPLEX; // | PI_I2S_OPT_EXT_WS | PI_I2S_OPT_EXT_CLK;
+        i2s_conf.options = PI_I2S_OPT_FULL_DUPLEX | PI_I2S_OPT_EXT_WS | PI_I2S_OPT_EXT_CLK;
         i2s_conf.ws_delay = 1;
         i2s_conf.ws_type = 1;
 
@@ -389,17 +389,9 @@ static void RunDenoiser()
         if (pi_i2s_open(i2s)) return -1;
         printf("i2s opened\n");
 
-        int err = 0;
         int32_t stream_ch[2];
-        SFU_uDMA_Channel_T **ChanOutCtxt = SFU_Allocate_ChannelContexts(2);
-        stream_ch[0] = SFU_Allocate_uDMA_Stream(ChanOutCtxt[0], 1, SAI_ITF_OUT, 0, &SFU_RTD(GraphINOUT));
-        stream_ch[1] = SFU_Allocate_uDMA_Stream(ChanOutCtxt[1], 1, SAI_ITF_OUT, 1, &SFU_RTD(GraphINOUT));
-
-        if (err != 0)
-        {
-            printf("Unable to bind I2S(SAI: %d) to SFU STREAM block\n", SAI_ITF_OUT);
-            return -1;
-        }
+        stream_ch[1] = SFU_Allocate_uDMA_Stream(ChanCtxt[0], 1, SAI_ITF_OUT, 0, &SFU_RTD(GraphINOUT));
+        stream_ch[0] = SFU_Allocate_uDMA_Stream(ChanCtxt[1], 1, SAI_ITF_OUT, 1, &SFU_RTD(GraphINOUT));
 
         for (int i=0; i<NB_CHANNELS; i++)
         {
@@ -409,9 +401,9 @@ static void RunDenoiser()
 
             // Enabled TX
             i2s_slot_conf.options = PI_I2S_OPT_IS_TX | PI_I2S_OPT_ENABLED;
-            i2s_slot_conf.word_size = WORD_SIZE;
-            i2s_slot_conf.mem_word_size = WORD_SIZE;
-            i2s_slot_conf.block_size = (WORD_SIZE>>3); // block size is in byte
+            i2s_slot_conf.word_size = 32;
+            i2s_slot_conf.mem_word_size = 32;
+            i2s_slot_conf.block_size = (32>>3); // block size is in byte
 
             i2s_slot_conf.format = PI_I2S_CH_FMT_DATA_ORDER_MSB | PI_I2S_CH_FMT_DATA_ALIGN_LEFT | PI_I2S_CH_FMT_DATA_SIGN_NO_EXTEND;
             i2s_slot_conf.stream_id = stream_ch[i];
@@ -460,11 +452,20 @@ static void RunDenoiser()
 #endif // IS_SFU == 1 
 
 
+static void setup_pads(void)
+{
+    #define PAD_UART1_TX (PI_PAD_067)
 
+    pi_pad_function_set(PAD_UART1_TX, PI_PAD_FUNC0);
+
+    pi_pad_mux_group_set(PAD_UART1_TX, PI_PAD_MUX_GROUP_UART1_TX);
+}
 
 
 int denoiser(void)
 {
+
+    setup_pads();
     printf("Entering main controller\n");
 
         /****
@@ -489,13 +490,12 @@ int denoiser(void)
     /****
         Configure GPIO Output.
     ****/
-    gpio_pin_o = PI_GPIO_A89; /* PI_GPIO_A02-PI_GPIO_A05 */
+    gpio_pin_o = 0; /* PI_GPIO_A02-PI_GPIO_A05 */
 
-    pi_pad_set_function(PI_PAD_089, PI_PAD_FUNC1);
+    pi_pad_function_set(PI_PAD_000, PI_PAD_FUNC1);
 
     pi_gpio_pin_configure( gpio_pin_o, PI_GPIO_OUTPUT);
 #endif
-
 
     /****
         Configure And Open the External Ram. 
@@ -539,7 +539,7 @@ int denoiser(void)
 
 #if IS_SFU == 1 
 
-    enable_3v3_periph();
+    //enable_3v3_periph();
     /****
         Setup the SFU for PDM in/out
     ****/
@@ -556,13 +556,15 @@ int denoiser(void)
     // SAI 2 -> Drive pad with 12 mAP to have less noise
     uint32_t *Magic_Setting = (uint32_t *)0x1A104068;
     *Magic_Setting = 3 << 10 | 3 << 18;
+
+    SFU_uDMA_Channel_T **ChanOutCtxt = SFU_Allocate_ChannelContexts(2);
     
     // Configure PDM in
     if (open_i2s_PDM(&i2s_in, SAI_ITF_IN,   3072000, 3, 0)) return -1;
     // Configure PDM out
     //if (open_i2s_PDM(&i2s_out, SAI_ITF_OUT, 3072000, 0, 0)) return -1;
     //
-    open_sai_for_telink(&i2s_out);
+    open_sai_for_telink(&i2s_out, ChanOutCtxt);
 
     StartSFU(FREQ_SFU*1000*1000, 1);
 
@@ -586,14 +588,21 @@ int denoiser(void)
     //SFU_uDMA_Channel_Callback(ChanOutCtxt_0, handle_sfu_out_0_end, ChanOutCtxt_0);
     
     // Connect Channels to SFU for Mic IN (PDM IN)
-    SFU_GraphConnectIO(SFU_Name(GraphINOUT, In_1), SAI_ITF_IN, 3, &SFU_RTD(GraphINOUT));
+    SFU_GraphConnectIO(SFU_Name(GraphINOUT, In_1), SAI_ITF_IN, 0, &SFU_RTD(GraphINOUT));
     SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out_1), ChanInCtxt_0->ChannelId, 0, &SFU_RTD(GraphINOUT));
     
-
     // Connect Channels to SFU for I2S OUT
     Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, In1), ChanOutCtxt_0->ChannelId, 0, &SFU_RTD(GraphINOUT));
-    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out0), SAI_ITF_OUT, 0, &SFU_RTD(GraphINOUT));
-    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT, 1, &SFU_RTD(GraphINOUT));
+    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out0), ChanOutCtxt[1]->ChannelId, 0, &SFU_RTD(GraphINOUT));
+    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out1), ChanOutCtxt[0]->ChannelId, 1, &SFU_RTD(GraphINOUT));
+
+        // Connect Channels to SFU for I2S OUT
+    //Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, In1), ChanOutCtxt_0->ChannelId, 0, &SFU_RTD(GraphINOUT));
+    //Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out0), SFU_StreamId(SFU_Name(GraphINOUT, Out0),&SFU_RTD(GraphINOUT)), 0, &SFU_RTD(GraphINOUT));
+
+    SFU_GraphSetClock(SFU_Name(GraphINOUT, In1), CLK_SAI2, &SFU_RTD(GraphINOUT));
+    SFU_GraphSetClock(SFU_Name(GraphINOUT, Out0), CLK_SAI2, &SFU_RTD(GraphINOUT));
+    SFU_GraphSetClock(SFU_Name(GraphINOUT, Out1), CLK_SAI2, &SFU_RTD(GraphINOUT));
 
     //Next API will have a value to replace this high number with -1
     //To be able to 
@@ -766,7 +775,7 @@ int denoiser(void)
     SFU_StartGraph(&SFU_RTD(GraphINOUT));
     while(1){
         //slider_value = ads1014_read(i2c_slider, 0);
-        pi_evt_wait_on(&proc_task);
+        pi_evt_wait(&proc_task);
 
 #ifdef AUDIO_EVK
         pi_gpio_pin_write(gpio_pin_o, 1);
