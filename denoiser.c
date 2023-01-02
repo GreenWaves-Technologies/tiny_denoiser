@@ -37,11 +37,16 @@
 struct pi_device DefaultRam; 
 struct pi_device* ram = &DefaultRam;
 
+static volatile uint8_t mode = 0;
+
+
 AT_DEFAULTFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 
 #ifdef AUDIO_EVK
     // GPIO defines
     pi_gpio_e gpio_pin_o; /* PI_GPIO_A02-PI_GPIO_A05 */
+    pi_gpio_e gpio_button_pin; /* PI_GPIO_A02-PI_GPIO_A05 */
+
     int val_gpio;
 #endif
 
@@ -49,8 +54,7 @@ AT_DEFAULTFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 static pi_fs_file_t * file[1];
 static struct pi_device fs;
 static struct pi_device flash;
-pi_device_t* i2c_slider;
-static PI_L2 uint16_t slider_value = 0xFFFF;
+
 
 // datatype for computation
 #define DATATYPE_SIGNAL     float16
@@ -122,38 +126,6 @@ PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_1_I[RNN_STATE_DIM_1];
 PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_0_C[RNN_STATE_DIM_0];
 PI_L2 DATATYPE_SIGNAL_INF RNN_STATE_1_C[RNN_STATE_DIM_1];
 #endif
-
-
-static uint16_t ads1014_read(pi_device_t *dev, uint8_t addr)
-{
-    uint16_t result;
-    pi_i2c_write(dev, &addr, 1, PI_I2C_XFER_START | PI_I2C_XFER_STOP);
-    pi_i2c_read(dev, (uint8_t *)&result, 2, PI_I2C_XFER_START | PI_I2C_XFER_STOP);
-    result = (result << 8) | (result >> 8);
-    return result;
-}
-
-static int ads1014_write(pi_device_t *dev, uint8_t addr, uint16_t value)
-{
-    uint8_t buffer[3] = { addr, value >> 8, value & 0xFF };
-    return pi_i2c_write(dev, buffer, 3, PI_I2C_XFER_START | PI_I2C_XFER_STOP);
-}
-
-int init_ads1014(pi_device_t *i2c)
-{
-    struct pi_i2c_conf conf;
-    pi_i2c_conf_init(&conf);
-    conf.itf = 1;
-    pi_i2c_conf_set_slave_addr(&conf, 0x90, 0);
-
-    pi_open_from_conf(i2c, &conf);
-    if (pi_i2c_open(i2c)) return -1;
-
-    uint16_t expected = (1 << 15) | (0 << 12) | (2 << 9) | (7 << 5) | 3;
-    ads1014_write(i2c, 1, expected);
-
-    return 0;
-}
 
 
 /*
@@ -275,7 +247,7 @@ static void RunDenoiser()
     for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
         //#ifdef AUDIO_EVK
         
-        if(slider_value>28000){
+        if(mode == 2){
         //#endif
             STFT_Spectrogram[2*i]    = STFT_Spectrogram[2*i]   * STFT_Magnitude[i];
             STFT_Spectrogram[2*i+1]  = STFT_Spectrogram[2*i+1] * STFT_Magnitude[i];
@@ -285,8 +257,9 @@ static void RunDenoiser()
             STFT_Spectrogram[2*i+1]  = STFT_Spectrogram[2*i+1] * 1.0f;    
         }
         //#endif
-    }    
-    #   ifdef PERF
+    }
+
+    #ifdef PERF
     ti = gap_cl_readhwtimer() - ta;
     PRINTF("%45s: Cycles: %10d\n","Denoising applicatio: ", ti );
     #endif
@@ -308,6 +281,7 @@ static void RunDenoiser()
     //This should be equal to FRAME_SIZE/FRAME_STEP + 1
     #define STRUCT_DELAY (1)
 
+    //#define SAI_ITF_IN         (1)
     #define SAI_ITF_IN         (0)
     #define SAI_ITF_OUT        (2)
 
@@ -449,8 +423,15 @@ static void RunDenoiser()
         return 0;
     }
 
-#endif // IS_SFU == 1 
+static uint8_t delay_flag = 0;
+static uint8_t flag = 0;
 
+static pi_task_t cb_gpio_task;
+static pi_task_t delay_task;
+static pi_task_t wait_task;
+static struct pi_device gpio_irq_dev;
+
+#define BUTTON_MIN_DELTA 1000000
 
 static void setup_pads(void)
 {
@@ -461,12 +442,94 @@ static void setup_pads(void)
     pi_pad_mux_group_set(PAD_UART1_TX, PI_PAD_MUX_GROUP_UART1_TX);
 }
 
+static void __task_delay_func()
+{
+    flag =1;
+    if (mode == 0)
+    {
+        //printf("mode 0 to 1 \n");
+        mode = 1;
+        pi_task_release(&wait_task); // TODO: To uncomment when booting from MRAM //
+    }
+    else if (mode == 1)
+    {
+        //printf("mode 1 to 2 \n");
+        mode = 2;
+    }
+    else if (mode == 2)
+    {
+        //printf("mode 2 to 1 \n");
+        mode = 1;
+    }
+    delay_flag = 0;
+}
+
+static void __pi_gpio_cb(void* args)
+{
+    //printf("gpio call back \n");
+    pi_gpio_pin_notif_clear(gpio_button_pin);
+    uint32_t button_state;
+    pi_gpio_pin_read(gpio_button_pin, &button_state);
+    if (button_state == 0)
+    {
+        if (delay_flag == 0)
+        {
+            pi_task_push_delayed_us(&delay_task, BUTTON_MIN_DELTA);
+            delay_flag = 1;
+        }
+        else
+        {
+        }
+    }
+    else
+    {
+        if (delay_flag == 1)
+        {
+            pi_task_cancel_delayed_us(&delay_task);
+            delay_flag = 0;
+        }
+        else
+        {
+        }
+    }   
+}
+
+static int setup_button()
+    
+{
+    gpio_button_pin = 47;
+    pi_pad_set_function(gpio_button_pin, PI_PAD_FUNC1);
+
+    pi_gpio_flags_e cfg_flags = PI_GPIO_INPUT;
+                                //| PI_GPIO_PULL_ENABLE
+                                //| PI_GPIO_PULL_UP
+                                //| PI_GPIO_DRIVE_STRENGTH_LOW;    
+
+    pi_gpio_pin_configure(gpio_button_pin, cfg_flags);
+    pi_gpio_pin_notif_clear(gpio_button_pin);    /* initialize and attach callback */
+    pi_task_callback(&cb_gpio_task, __pi_gpio_cb, NULL);
+    pi_task_callback(&delay_task, __task_delay_func, NULL);    
+
+    if (pi_gpio_pin_task_add(gpio_button_pin, &cb_gpio_task, PI_GPIO_NOTIF_EDGE))
+    {
+        return -1;
+    }
+
+    return 0;
+}
+
+#endif // IS_SFU == 1 
+
 
 int denoiser(void)
 {
 
     setup_pads();
+    setup_button();
     printf("Entering main controller\n");
+
+    pi_task_block(&wait_task);
+    pi_task_wait_on(&wait_task);   //wait while first push on button
 
         /****
         Change Frequency if needed
@@ -588,7 +651,9 @@ int denoiser(void)
     //SFU_uDMA_Channel_Callback(ChanOutCtxt_0, handle_sfu_out_0_end, ChanOutCtxt_0);
     
     // Connect Channels to SFU for Mic IN (PDM IN)
-    SFU_GraphConnectIO(SFU_Name(GraphINOUT, In_1), SAI_ITF_IN, 2, &SFU_RTD(GraphINOUT));
+    SFU_GraphConnectIO(SFU_Name(GraphINOUT, In_1), SAI_ITF_IN, 2, &SFU_RTD(GraphINOUT));  //SDO
+    //SFU_GraphConnectIO(SFU_Name(GraphINOUT, In_1), SAI_ITF_IN, 0, &SFU_RTD(GraphINOUT));  //SDI
+
     SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out_1), ChanInCtxt_0->ChannelId, 0, &SFU_RTD(GraphINOUT));
     
     // Connect Channels to SFU for I2S OUT
@@ -609,13 +674,14 @@ int denoiser(void)
     SFU_Enqueue_uDMA_Channel_Multi(ChanInCtxt_0, CHUNK_NUM, BufferInList, BUFF_SIZE, 0);
 
     //Starting In and Out Graphs
+
+
+
     pi_i2s_ioctl(&i2s_in, PI_I2S_IOCTL_START, NULL);
     pi_i2s_ioctl(&i2s_out, PI_I2S_IOCTL_START, NULL);
     
     printf("i2s started\n");
     //Enable slicer
-    //i2c_slider = pi_l2_malloc(sizeof(pi_device_t));
-    //init_ads1014(i2c_slider);
 
 #else //IS_SFU == 0 
 
@@ -774,7 +840,6 @@ int denoiser(void)
     chunk_in_cnt=0;
     SFU_StartGraph(&SFU_RTD(GraphINOUT));
     while(1){
-        //slider_value = ads1014_read(i2c_slider, 0);
         pi_evt_wait(&proc_task);
 
 #ifdef AUDIO_EVK
