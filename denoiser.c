@@ -390,7 +390,7 @@ static void RunDenoiser()
             //pi_time_wait_us(5000);
 
             SFU_Enqueue_uDMA_Channel_Multi(ChanOutCtxt_0, CHUNK_NUM, BufferOutList, BUFF_SIZE, 0);
-            SFU_Enqueue_uDMA_Channel_Multi(ChanOutCtxt_1, CHUNK_NUM, BufferOutList, BUFF_SIZE, 0);
+            //SFU_Enqueue_uDMA_Channel_Multi(ChanOutCtxt_1, CHUNK_NUM, BufferOutList, BUFF_SIZE, 0);
             SFU_GraphResetInputs(&SFU_RTD(GraphINOUT));
         }
 
@@ -591,17 +591,21 @@ int denoiser(void)
     int Trace = 0;
     pi_evt_sig_init(&proc_task);
 
-    // Drive pad with 12 mAP to have less noise
-    uint32_t *Magic_Setting_0 = (uint32_t *)0x1A104064;
+    // Drive pad with 12 mAP to have less noise SAI2
+    uint32_t *Magic_Setting_0 = (uint32_t *)0x1A104060;
     *Magic_Setting_0 = 3 << 2 | 3 << 10 | 3 << 18 | 3 << 26;
 
-    // SAI 2 -> Drive pad with 12 mAP to have less noise
-    uint32_t *Magic_Setting = (uint32_t *)0x1A104068;
-    *Magic_Setting = 3 << 10 | 3 << 18;
+    // Drive pad with 12 mAP to have less noise SAI1
+    uint32_t *Magic_Setting_1 = (uint32_t *)0x1A104064;
+    *Magic_Setting_1 = 3 << 2 | 3 << 10 | 3 << 18 | 3 << 26;
+
+    // // SAI 2 -> Drive pad with 12 mAP to have less noise
+    // uint32_t *Magic_Setting = (uint32_t *)0x1A104068;
+    // *Magic_Setting = 3 << 10 | 3 << 18;
     
     // Configure PDM in
     //if (open_i2s_PDM(&i2s_sai1, SAI1,   3072000, 2, 0)) return -1;
-    if (open_i2s_PDM(&i2s_sai0, SAI0,   3072000, 1, 0)) return -1;
+    if (open_i2s_PDM(&i2s_sai0, SAI0, 3072000, 1, 0)) return -1;
     //if (open_i2s_PDM(&i2s_sai0, SAI0,   3072000, 3, 0)) return -1;
 
 
@@ -633,7 +637,7 @@ int denoiser(void)
     
     // Get uDMA channels for GraphOUT
     SFU_Allocate_uDMA_Channel(ChanOutCtxt_0, 0, &SFU_RTD(GraphINOUT));
-    SFU_Allocate_uDMA_Channel(ChanOutCtxt_1, 0, &SFU_RTD(GraphINOUT));
+    //SFU_Allocate_uDMA_Channel(ChanOutCtxt_1, 0, &SFU_RTD(GraphINOUT));
     
     // Connect Channels to SFU for Mic IN (PDM IN)
     //SFU_GraphConnectIO(SFU_Name(GraphINOUT, In_1), SAI_ITF_IN, 2, &SFU_RTD(GraphINOUT));  //SDO
@@ -651,7 +655,7 @@ int denoiser(void)
 
 
     // Connect Channels to SFU for PDM OUT 2
-    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, In2), ChanOutCtxt_1->ChannelId, 0, &SFU_RTD(GraphINOUT));
+    //Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, In2), ChanOutCtxt_1->ChannelId, 0, &SFU_RTD(GraphINOUT));
     //Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out2), SAI_ITF_OUT_2, 0, &SFU_RTD(GraphINOUT));    //SDI
     //Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out2), SAI_ITF_OUT_2, 2, &SFU_RTD(GraphINOUT));    //SDO
     Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out2), SAI_ITF_OUT_2, 1, &SFU_RTD(GraphINOUT));    //SDO
@@ -669,7 +673,7 @@ int denoiser(void)
 
     SFU_Enqueue_uDMA_Channel_Multi(ChanInCtxt_0, CHUNK_NUM, BufferInList, BUFF_SIZE, 0);
 
-            //Starting In and Out Graphs
+    //Starting In and Out Graphs
     pi_i2s_ioctl(&i2s_sai0, PI_I2S_IOCTL_START, NULL);
     pi_i2s_ioctl(&i2s_sai1, PI_I2S_IOCTL_START, NULL);
 
