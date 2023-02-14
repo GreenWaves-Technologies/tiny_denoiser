@@ -37,13 +37,15 @@
 struct pi_device DefaultRam; 
 struct pi_device* ram = &DefaultRam;
 
+static volatile uint8_t mode = 0;
+
 AT_DEFAULTFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 
 #ifdef AUDIO_EVK
     // GPIO defines
-    struct pi_device gpio_port;
-    struct pi_device gpio_in;
-    pi_gpio_e gpio_pin_o; /* PI_GPIO_A02-PI_GPIO_A05 */
+    pi_gpio_e gpio_pin_o; 
+    pi_gpio_e gpio_button_pin; 
+
     int val_gpio;
 #endif
 
@@ -51,7 +53,7 @@ AT_DEFAULTFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 static pi_fs_file_t * file[1];
 static struct pi_device fs;
 static struct pi_device flash;
-pi_device_t* i2c_slider;
+//pi_device_t* i2c_slider;
 static PI_L2 uint16_t slider_value;
 
 // datatype for computation
@@ -248,7 +250,7 @@ static void RunDenoiser()
           reset: only enabled at the start of the application
     */
 #ifdef AUDIO_EVK
-        pi_gpio_pin_write(&gpio_port, gpio_pin_o, 1);
+        pi_gpio_pin_write(gpio_pin_o, 1);
 #endif
     __PREFIX(CNN)(
 #   ifndef GRU
@@ -263,7 +265,7 @@ static void RunDenoiser()
         STFT_Magnitude
     );
 #ifdef AUDIO_EVK
-        pi_gpio_pin_write(&gpio_port, gpio_pin_o, 0);
+        pi_gpio_pin_write(gpio_pin_o, 0);
 #endif
 
     /* 
@@ -277,8 +279,7 @@ static void RunDenoiser()
     for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
         //#ifdef AUDIO_EVK
         
-        if(slider_value>28000){
-        //#endif
+        if(mode == 2){        //#endif
             STFT_Spectrogram[2*i]    = STFT_Spectrogram[2*i]   * STFT_Magnitude[i];
             STFT_Spectrogram[2*i+1]  = STFT_Spectrogram[2*i+1] * STFT_Magnitude[i];
         //#ifdef AUDIO_EVK
@@ -301,8 +302,10 @@ static void RunDenoiser()
     #include "SFU_RT.h"
 
     // FIXME: to tune it!!
+    //#define Q_BIT_IN 27
+    //#define Q_BIT_OUT (Q_BIT_IN-3)
     #define Q_BIT_IN 27
-    #define Q_BIT_OUT (Q_BIT_IN-3)
+    #define Q_BIT_OUT 28
 
     #define BUFF_SIZE (FRAME_STEP*4)
     #define CHUNK_NUM (8)
@@ -310,13 +313,19 @@ static void RunDenoiser()
     //This should be equal to FRAME_SIZE/FRAME_STEP + 1
     #define STRUCT_DELAY (1)
     
+    #define SAI0         (0)
     #define SAI1         (1)
     #define SAI2         (2)
 
 
-    #define SAI_ITF_IN         (SAI1)
-    #define SAI_ITF_OUT_1        (SAI2)
-    #define SAI_ITF_OUT_2       (SAI1)
+    // #define SAI_ITF_IN         (SAI1)
+    // #define SAI_ITF_OUT_1        (SAI2)
+    // #define SAI_ITF_OUT_2       (SAI1)
+    
+    #define SAI_ITF_IN            (SAI0)
+    #define SAI_ITF_OUT_1        (SAI1)
+    #define SAI_ITF_OUT_2        (SAI0)
+
 
 
     #define SAI_ID               (48)
@@ -341,7 +350,7 @@ static void RunDenoiser()
     static pi_event_t proc_task;
 
 
-    static int open_i2s_PDM(struct pi_device *i2s, unsigned int SAIn, unsigned int Frequency, unsigned int Polarity, unsigned int Diff)
+    static int open_i2s_PDM(struct pi_device *i2s, unsigned int SAIn, unsigned int Frequency, unsigned int Direction, unsigned int Diff)
     {
         struct pi_i2s_conf i2s_conf;
         pi_i2s_conf_init(&i2s_conf);
@@ -350,8 +359,8 @@ static void RunDenoiser()
         i2s_conf.options = PI_I2S_OPT_REF_CLK_FAST;
         i2s_conf.frame_clk_freq = Frequency;                // In pdm mode, the frame_clk_freq = i2s_clk
         i2s_conf.itf = SAIn;                                // Which sai interface
-        i2s_conf.format |= PI_I2S_FMT_DATA_FORMAT_PDM;      // Choose PDM mode
-        i2s_conf.pdm_polarity = Polarity;                   // 2b'11 slave on both SDI and SDO (SDO under test)
+        i2s_conf.mode = PI_I2S_MODE_PDM;                   // Choose PDM mode
+        i2s_conf.pdm_direction = Direction;                   // 2b'11 slave on both SDI and SDO (SDO under test)
         i2s_conf.pdm_diff = Diff;                           // Set differential mode on pairs (TX only)
 
     //    i2s_conf.options |= PI_I2S_OPT_EXT_CLK;             // Put I2S CLK in input mode for safety
@@ -361,10 +370,10 @@ static void RunDenoiser()
         if (pi_i2s_open(i2s))
             return -1;
 
-        pi_pad_set_function(SAI_SCK(SAIn),PI_PAD_FUNC0);
-        pi_pad_set_function(SAI_SDI(SAIn),PI_PAD_FUNC0);
-        pi_pad_set_function(SAI_SDO(SAIn),PI_PAD_FUNC0);
-        pi_pad_set_function(SAI_WS(SAIn),PI_PAD_FUNC0);
+        pi_pad_function_set(SAI_SCK(SAIn),PI_PAD_FUNC0);
+        pi_pad_function_set(SAI_SDI(SAIn),PI_PAD_FUNC0);
+        pi_pad_function_set(SAI_SDO(SAIn),PI_PAD_FUNC0);
+        pi_pad_function_set(SAI_WS(SAIn),PI_PAD_FUNC0);
 
         return 0;
     }
@@ -387,22 +396,127 @@ static void RunDenoiser()
             pi_evt_push(&proc_task);
     }
 
-#endif // IS_SFU == 1 
+
+static uint8_t delay_flag = 0;
+static uint8_t flag = 0;
+
+static pi_task_t cb_gpio_task;
+static pi_task_t delay_task;
+static pi_task_t wait_task;
+static struct pi_device gpio_irq_dev;
+
+#define BUTTON_MIN_DELTA 1000000
+
+
+static void setup_pads(void)
+{
+    #define PAD_UART1_TX (PI_PAD_067)
+
+    pi_pad_function_set(PAD_UART1_TX, PI_PAD_FUNC0);
+
+    pi_pad_mux_group_set(PAD_UART1_TX, PI_PAD_MUX_GROUP_UART1_TX);
+}
+
+static void __task_delay_func()
+{
+    flag =1;
+    if (mode == 0)
+    {
+        //printf("mode 0 to 1 \n");
+        mode = 1;
+        pi_task_release(&wait_task); // TODO: To uncomment when booting from MRAM //
+    }
+    else if (mode == 1)
+    {
+        //printf("mode 1 to 2 \n");
+        mode = 2;
+    }
+    else if (mode == 2)
+    {
+        //printf("mode 2 to 1 \n");
+        mode = 1;
+    }
+    delay_flag = 0;
+
+}
+
+static void __pi_gpio_cb(void* args)
+{
+    //printf("gpio call back \n");
+    pi_gpio_pin_notif_clear(gpio_button_pin);
+    uint32_t button_state;
+    pi_gpio_pin_read(gpio_button_pin, &button_state);
+    if (button_state == 0)
+    {
+        if (delay_flag == 0)
+        {
+            pi_task_push_delayed_us(&delay_task, BUTTON_MIN_DELTA);
+            delay_flag = 1;
+        }
+        else
+        {
+        }
+    }
+    else
+    {
+        if (delay_flag == 1)
+        {
+            pi_task_cancel_delayed_us(&delay_task);
+            delay_flag = 0;
+        }
+        else
+        {
+        }
+    }   
+}
+
+
+static int setup_button()
+    
+{
+    gpio_button_pin = 47;
+    pi_pad_function_set(gpio_button_pin, PI_PAD_FUNC1);
+
+    pi_gpio_flags_e cfg_flags = PI_GPIO_INPUT;
+                                //| PI_GPIO_PULL_ENABLE
+                                //| PI_GPIO_PULL_UP
+                                //| PI_GPIO_DRIVE_STRENGTH_LOW;    
+
+    pi_gpio_pin_configure(gpio_button_pin, cfg_flags);
+    pi_gpio_pin_notif_clear(gpio_button_pin);    /* initialize and attach callback */
+    pi_task_callback(&cb_gpio_task, __pi_gpio_cb, NULL);
+    pi_task_callback(&delay_task, __task_delay_func, NULL);    
+
+    if (pi_gpio_pin_task_add(gpio_button_pin, &cb_gpio_task, PI_GPIO_NOTIF_EDGE))
+    {
+        return -1;
+    }
+
+    return 0;
+}
+
+#endif // IS_SFU == 1
 
 
 
-
-
+//int denoiser(void)
 int denoiser(void)
 {
     printf("Entering main controller\n");
+
+    setup_pads();
+    setup_button();
+
+    pi_task_block(&wait_task);
+    pi_task_wait_on(&wait_task);   //wait while first push on button
+
 
         /****
         Change Frequency if needed
     ****/
  
     // Voltage-Frequency settings
-    uint32_t voltage =VOLTAGE;
+    uint32_t voltage = VOLTAGE;
     pi_freq_set(PI_FREQ_DOMAIN_FC,      FREQ_FC*1000*1000);
     pi_freq_set(PI_FREQ_DOMAIN_PERIPH,  FREQ_FC*1000*1000);
 
@@ -419,20 +533,10 @@ int denoiser(void)
     /****
         Configure GPIO Output.
     ****/
-    struct pi_gpio_conf gpio_conf = {0};
-    gpio_pin_o = PI_GPIO_A89; /* PI_GPIO_A02-PI_GPIO_A05 */
+    gpio_pin_o = PI_PAD_000;
+    pi_pad_function_set(PI_PAD_000, PI_PAD_FUNC1);
+    pi_gpio_pin_configure( gpio_pin_o, PI_GPIO_OUTPUT);
 
-
-    pi_gpio_conf_init(&gpio_conf);
-    pi_open_from_conf(&gpio_port, &gpio_conf);
-    gpio_conf.port = (gpio_pin_o & PI_GPIO_NUM_MASK) / 32;
-    int errors = pi_gpio_open(&gpio_port);
-    if (errors)
-    {
-        printf("Error opening GPIO %d\n", errors);
-        pmsis_exit(errors);
-    }
-    pi_gpio_pin_configure(&gpio_port, gpio_pin_o, PI_GPIO_OUTPUT);
 #endif
 
 
@@ -480,8 +584,8 @@ int denoiser(void)
     /****
         Setup the SFU for PDM in/out
     ****/
+    struct pi_device i2s_sai0;
     struct pi_device i2s_sai1;
-    struct pi_device i2s_sai2;
     int Status;
     int Trace = 0;
     pi_evt_sig_init(&proc_task);
@@ -495,10 +599,16 @@ int denoiser(void)
     *Magic_Setting = 3 << 10 | 3 << 18;
     
     // Configure PDM in
-    if (open_i2s_PDM(&i2s_sai1, SAI1,   3072000, 2, 0)) return -1;
+    //if (open_i2s_PDM(&i2s_sai1, SAI1,   3072000, 2, 0)) return -1;
+    if (open_i2s_PDM(&i2s_sai0, SAI0,   3072000, 1, 0)) return -1;
+    //if (open_i2s_PDM(&i2s_sai0, SAI0,   3072000, 0, 0)) return -1;
+
 
     // Configure PDM out
-    if (open_i2s_PDM(&i2s_sai2, SAI2, 3072000, 0, 0)) return -1;
+    //if (open_i2s_PDM(&i2s_sai2, SAI2, 3072000, 0, 0)) return -1;
+    if (open_i2s_PDM(&i2s_sai1, SAI1, 3072000, 1, 0)) return -1;
+    //if (open_i2s_PDM(&i2s_sai1, SAI1, 3072000, 0, 0)) return -1;
+
 
 
     StartSFU(FREQ_SFU*1000*1000, 1);
@@ -525,29 +635,35 @@ int denoiser(void)
     SFU_Allocate_uDMA_Channel(ChanOutCtxt_1, 0, &SFU_RTD(GraphINOUT));
     
     // Connect Channels to SFU for Mic IN (PDM IN)
-    SFU_GraphConnectIO(SFU_Name(GraphINOUT, In_1), SAI_ITF_IN, 2, &SFU_RTD(GraphINOUT));
+    //SFU_GraphConnectIO(SFU_Name(GraphINOUT, In_1), SAI_ITF_IN, 2, &SFU_RTD(GraphINOUT));  //SDO
+    SFU_GraphConnectIO(SFU_Name(GraphINOUT, In_1), SAI_ITF_IN, 0, &SFU_RTD(GraphINOUT));  //SDI
+
     SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out_1), ChanInCtxt_0->ChannelId, 0, &SFU_RTD(GraphINOUT));
     
 
     // Connect Channels to SFU for PDM OUT 1
     Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, In1), ChanOutCtxt_0->ChannelId, 0, &SFU_RTD(GraphINOUT));
-    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT_1, 0, &SFU_RTD(GraphINOUT));
+    //Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT_1, 0, &SFU_RTD(GraphINOUT));    //SDI
+    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT_1, 2, &SFU_RTD(GraphINOUT));    //SDO
+
 
     // Connect Channels to SFU for PDM OUT 2
     Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, In2), ChanOutCtxt_1->ChannelId, 0, &SFU_RTD(GraphINOUT));
-    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out2), SAI_ITF_OUT_2, 0, &SFU_RTD(GraphINOUT));
+    //Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out2), SAI_ITF_OUT_2, 0, &SFU_RTD(GraphINOUT));    //SDI
+    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out2), SAI_ITF_OUT_2, 2, &SFU_RTD(GraphINOUT));    //SDO
+
 
     //Next API will have a value to replace this high number with -1
     //To be able to 
     SFU_Enqueue_uDMA_Channel_Multi(ChanInCtxt_0, CHUNK_NUM, BufferInList, BUFF_SIZE, 0);
 
             //Starting In and Out Graphs
+    pi_i2s_ioctl(&i2s_sai0, PI_I2S_IOCTL_START, NULL);
     pi_i2s_ioctl(&i2s_sai1, PI_I2S_IOCTL_START, NULL);
-    pi_i2s_ioctl(&i2s_sai2, PI_I2S_IOCTL_START, NULL);
 
     
 
-    fxl6408_setup();
+    //fxl6408_setup();
 
     // Setup 2 DAC
     if(setup_dac((0x34 << 1)) || setup_dac((0x36 << 1)))
@@ -556,11 +672,11 @@ int denoiser(void)
         pmsis_exit(-1);
     }
     pi_time_wait_us(100000);
-    //printf("Setup DAC OK\n"); 
+    printf("Setup DAC OK\n"); 
 
     //Enable slicer
-    i2c_slider = pi_l2_malloc(sizeof(pi_device_t));
-    init_ads1014(i2c_slider);
+    //i2c_slider = pi_l2_malloc(sizeof(pi_device_t));
+    //init_ads1014(i2c_slider);
 
 #else //IS_SFU == 0 
 
@@ -713,6 +829,7 @@ int denoiser(void)
             Audio_Frame[i] = ((DATATYPE_SIGNAL) in_temp_buffer[i] )/(1<<15);
             PRINTF("%f, ", Audio_Frame[i] );
         }
+   // }
 #else   
 
     // audio from SFU
@@ -720,11 +837,11 @@ int denoiser(void)
     chunk_in_cnt=0;
     SFU_StartGraph(&SFU_RTD(GraphINOUT));
     while(1){
-        slider_value = ads1014_read(i2c_slider, 0);
+        //slider_value = ads1014_read(i2c_slider, 0);
         pi_evt_wait_on(&proc_task);
 
 #ifdef AUDIO_EVK
-        pi_gpio_pin_write(&gpio_port, gpio_pin_o, 1);
+        pi_gpio_pin_write(gpio_pin_o, 1);
 #endif
 
         int round = (chunk_in_cnt%CHUNK_NUM);
@@ -780,7 +897,7 @@ int denoiser(void)
         }
         PRINTF("\n");
     
-
+    //}
 #   else // IS_INPUT_STFT == 0  //load the STFT 
 
 
@@ -894,7 +1011,7 @@ int denoiser(void)
 #endif //CHECKSUM
 
 #ifdef AUDIO_EVK
-        pi_gpio_pin_write(&gpio_port, gpio_pin_o, 0);
+        pi_gpio_pin_write(gpio_pin_o, 0);
 #endif
 
 #endif  // DISABLE_NN_INFERENCE
@@ -904,7 +1021,7 @@ int denoiser(void)
 #if IS_INPUT_STFT == 0 // if not loading the STFT
 
 #ifdef AUDIO_EVK
-        pi_gpio_pin_write(&gpio_port, gpio_pin_o, 1);
+        pi_gpio_pin_write(gpio_pin_o, 1);
 #endif
 
         /******
@@ -950,7 +1067,7 @@ int denoiser(void)
 
         // block until next input audio frame is ready
 #ifdef AUDIO_EVK
-        pi_gpio_pin_write(&gpio_port, gpio_pin_o, 0);
+        pi_gpio_pin_write(gpio_pin_o, 0);
 #endif
         chunk_in_cnt++;
         pi_evt_sig_init(&proc_task);
@@ -1056,15 +1173,26 @@ int denoiser(void)
 }
 
 
+
+
+// int main()
+// {
+//     PRINTF("\n\n\t *** Denoiser ***\n\n");
+//     return denoiser();
+// }
+
 int main()
 {
-	PRINTF("\n\n\t *** Denoiser ***\n\n");
+    
+    PRINTF("\n\n\t *** Denoiser ***\n\n");
 
-#   if IS_SFU == 0 
+
+#if IS_SFU == 0 
     #define __XSTR(__s) __STR(__s)
     #define __STR(__s) #__s
     WavName = __XSTR(WAV_FILE);
-#   endif    
+#endif    
 
-    return pmsis_kickoff((void *) denoiser);
+    return denoiser();
 }
+

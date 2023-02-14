@@ -3,6 +3,10 @@
 #include "pmsis.h"
 #include "bsp/bsp.h" 
 
+
+int setup_dac(uint8_t addr);
+
+
 static int write_reg8(pi_device_t *dev, uint8_t addr, uint8_t value)
 {
 
@@ -26,8 +30,8 @@ static uint8_t read_reg8(pi_device_t *dev, uint8_t addr)
 int fxl6408_setup()
 {
     // Setting pads 42 & 43 to Alternate 0 function to enable I2C1 peripheral
-    pi_pad_set_function(PI_PAD_042,  PI_PAD_FUNC0);
-    pi_pad_set_function(PI_PAD_043,  PI_PAD_FUNC0);
+    pi_pad_function_set(PI_PAD_042,  PI_PAD_FUNC0);
+    pi_pad_function_set(PI_PAD_043,  PI_PAD_FUNC0);
 
     //printf("Testing fxl6408\n");
     int errors = 0;
@@ -62,10 +66,14 @@ int fxl6408_setup()
 
 int setup_dac(uint8_t addr)
 {
+
+    pi_pad_function_set(PI_PAD_040,  PI_PAD_FUNC0);
+    pi_pad_function_set(PI_PAD_041,  PI_PAD_FUNC0);
+
     pi_device_t ssm_i2c;
     struct pi_i2c_conf conf;
     pi_i2c_conf_init(&conf);
-    conf.itf = 1;
+    conf.itf = 0;
     conf.max_baudrate = 100000;
     pi_i2c_conf_set_slave_addr(&conf, addr, 0);
 
@@ -192,6 +200,7 @@ int setup_dac(uint8_t addr)
     //APWD_EN (bit 1) => 0 (automatic power down disabled)
     //LIM_EN  (bit 4) => 0 (limiter disabled)
     write_reg8(&ssm_i2c, 0x04, 0x0);
+
 
 
     //pi_i2c_close(&ssm_i2c);
