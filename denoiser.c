@@ -302,10 +302,10 @@ static void RunDenoiser()
     #include "SFU_RT.h"
 
     // FIXME: to tune it!!
-    //#define Q_BIT_IN 27
-    //#define Q_BIT_OUT (Q_BIT_IN-3)
     #define Q_BIT_IN 27
-    #define Q_BIT_OUT 28
+    #define Q_BIT_OUT (Q_BIT_IN-1)
+    // #define Q_BIT_IN 27
+    // #define Q_BIT_OUT 28
 
     #define BUFF_SIZE (FRAME_STEP*4)
     #define CHUNK_NUM (8)
@@ -384,6 +384,7 @@ static void RunDenoiser()
 
     static void handle_sfu_in_0_end(void *arg)
     {
+       // printf("flag \n");
         
         if(chunk_in_cnt==STRUCT_DELAY){
             //pi_time_wait_us(5000);
@@ -601,13 +602,13 @@ int denoiser(void)
     // Configure PDM in
     //if (open_i2s_PDM(&i2s_sai1, SAI1,   3072000, 2, 0)) return -1;
     if (open_i2s_PDM(&i2s_sai0, SAI0,   3072000, 1, 0)) return -1;
-    //if (open_i2s_PDM(&i2s_sai0, SAI0,   3072000, 0, 0)) return -1;
+    //if (open_i2s_PDM(&i2s_sai0, SAI0,   3072000, 3, 0)) return -1;
 
 
     // Configure PDM out
     //if (open_i2s_PDM(&i2s_sai2, SAI2, 3072000, 0, 0)) return -1;
     if (open_i2s_PDM(&i2s_sai1, SAI1, 3072000, 1, 0)) return -1;
-    //if (open_i2s_PDM(&i2s_sai1, SAI1, 3072000, 0, 0)) return -1;
+    //if (open_i2s_PDM(&i2s_sai1, SAI1, 3072000, 3, 0)) return -1;
 
 
 
@@ -644,17 +645,28 @@ int denoiser(void)
     // Connect Channels to SFU for PDM OUT 1
     Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, In1), ChanOutCtxt_0->ChannelId, 0, &SFU_RTD(GraphINOUT));
     //Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT_1, 0, &SFU_RTD(GraphINOUT));    //SDI
-    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT_1, 2, &SFU_RTD(GraphINOUT));    //SDO
+    //Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT_1, 2, &SFU_RTD(GraphINOUT));    //SDO
+    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT_1, 1, &SFU_RTD(GraphINOUT));    //SDO
+
 
 
     // Connect Channels to SFU for PDM OUT 2
     Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, In2), ChanOutCtxt_1->ChannelId, 0, &SFU_RTD(GraphINOUT));
     //Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out2), SAI_ITF_OUT_2, 0, &SFU_RTD(GraphINOUT));    //SDI
-    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out2), SAI_ITF_OUT_2, 2, &SFU_RTD(GraphINOUT));    //SDO
+    //Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out2), SAI_ITF_OUT_2, 2, &SFU_RTD(GraphINOUT));    //SDO
+    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out2), SAI_ITF_OUT_2, 1, &SFU_RTD(GraphINOUT));    //SDO
+
+
+
+    // SFU_GraphSetClock(SFU_Name(GraphINOUT, In1), CLK_SAI0, &SFU_RTD(GraphINOUT));
+    // SFU_GraphSetClock(SFU_Name(GraphINOUT, Out1), CLK_SAI1, &SFU_RTD(GraphINOUT));
+    // SFU_GraphSetClock(SFU_Name(GraphINOUT, Out2), CLK_SAI0, &SFU_RTD(GraphINOUT));
+
 
 
     //Next API will have a value to replace this high number with -1
     //To be able to 
+
     SFU_Enqueue_uDMA_Channel_Multi(ChanInCtxt_0, CHUNK_NUM, BufferInList, BUFF_SIZE, 0);
 
             //Starting In and Out Graphs
@@ -671,8 +683,11 @@ int denoiser(void)
         printf("Failed to setup DAC\n");
         pmsis_exit(-1);
     }
-    pi_time_wait_us(100000);
+    pi_time_wait_us(1000000);
     printf("Setup DAC OK\n"); 
+
+    // pi_i2s_ioctl(&i2s_sai0, PI_I2S_IOCTL_START, NULL);
+    // pi_i2s_ioctl(&i2s_sai1, PI_I2S_IOCTL_START, NULL);
 
     //Enable slicer
     //i2c_slider = pi_l2_malloc(sizeof(pi_device_t));
