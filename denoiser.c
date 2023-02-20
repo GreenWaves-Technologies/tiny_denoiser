@@ -38,6 +38,7 @@ struct pi_device DefaultRam;
 struct pi_device* ram = &DefaultRam;
 
 static volatile uint8_t mode = 0;
+static volatile uint8_t mode_loop = 0;
 
 AT_DEFAULTFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 
@@ -278,8 +279,7 @@ static void RunDenoiser()
     #endif
     for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
         //#ifdef AUDIO_EVK
-        
-        if(mode == 2){        //#endif
+        if(mode == 1){        //#endif
             STFT_Spectrogram[2*i]    = STFT_Spectrogram[2*i]   * STFT_Magnitude[i];
             STFT_Spectrogram[2*i+1]  = STFT_Spectrogram[2*i+1] * STFT_Magnitude[i];
         //#ifdef AUDIO_EVK
@@ -303,11 +303,13 @@ static void RunDenoiser()
 
     // FIXME: to tune it!!
     #define Q_BIT_IN 27
-    #define Q_BIT_OUT (Q_BIT_IN-1)
+    #define Q_BIT_OUT (Q_BIT_IN-3)
     // #define Q_BIT_IN 27
     // #define Q_BIT_OUT 28
 
     #define BUFF_SIZE (FRAME_STEP*4)
+    //#define BUFF_SIZE (FRAME_STEP*4)
+
     #define CHUNK_NUM (8)
 
     //This should be equal to FRAME_SIZE/FRAME_STEP + 1
@@ -317,14 +319,9 @@ static void RunDenoiser()
     #define SAI1         (1)
     #define SAI2         (2)
 
-
-    // #define SAI_ITF_IN         (SAI1)
-    // #define SAI_ITF_OUT_1        (SAI2)
-    // #define SAI_ITF_OUT_2       (SAI1)
     
-    #define SAI_ITF_IN            (SAI0)
-    #define SAI_ITF_OUT_1        (SAI1)
-    #define SAI_ITF_OUT_2        (SAI0)
+    #define SAI_ITF_IN         (SAI0)
+    #define SAI_ITF_OUT        (SAI0)
 
 
 
@@ -363,7 +360,6 @@ static void RunDenoiser()
         i2s_conf.pdm_direction = Direction;                   // 2b'11 slave on both SDI and SDO (SDO under test)
         i2s_conf.pdm_diff = Diff;                           // Set differential mode on pairs (TX only)
 
-    //    i2s_conf.options |= PI_I2S_OPT_EXT_CLK;             // Put I2S CLK in input mode for safety
 
         pi_open_from_conf(i2s, &i2s_conf);
 
@@ -390,7 +386,6 @@ static void RunDenoiser()
             //pi_time_wait_us(5000);
 
             SFU_Enqueue_uDMA_Channel_Multi(ChanOutCtxt_0, CHUNK_NUM, BufferOutList, BUFF_SIZE, 0);
-            //SFU_Enqueue_uDMA_Channel_Multi(ChanOutCtxt_1, CHUNK_NUM, BufferOutList, BUFF_SIZE, 0);
             SFU_GraphResetInputs(&SFU_RTD(GraphINOUT));
         }
 
@@ -407,6 +402,8 @@ static pi_task_t wait_task;
 static struct pi_device gpio_irq_dev;
 
 #define BUTTON_MIN_DELTA 1000000
+//#define BUTTON_MIN_DELTA 100000
+
 
 
 static void setup_pads(void)
@@ -418,27 +415,19 @@ static void setup_pads(void)
     pi_pad_mux_group_set(PAD_UART1_TX, PI_PAD_MUX_GROUP_UART1_TX);
 }
 
+
 static void __task_delay_func()
 {
-    flag =1;
     if (mode == 0)
     {
-        //printf("mode 0 to 1 \n");
         mode = 1;
         pi_task_release(&wait_task); // TODO: To uncomment when booting from MRAM //
     }
     else if (mode == 1)
     {
-        //printf("mode 1 to 2 \n");
-        mode = 2;
-    }
-    else if (mode == 2)
-    {
-        //printf("mode 2 to 1 \n");
-        mode = 1;
+        mode = 0;
     }
     delay_flag = 0;
-
 }
 
 static void __pi_gpio_cb(void* args)
@@ -471,12 +460,10 @@ static void __pi_gpio_cb(void* args)
     }   
 }
 
-
-static int setup_button()
-    
+static int setup_button()   
 {
     gpio_button_pin = 47;
-    pi_pad_function_set(gpio_button_pin, PI_PAD_FUNC1);
+    pi_pad_set_function(gpio_button_pin, PI_PAD_FUNC1);
 
     pi_gpio_flags_e cfg_flags = PI_GPIO_INPUT;
                                 //| PI_GPIO_PULL_ENABLE
@@ -496,9 +483,10 @@ static int setup_button()
     return 0;
 }
 
+
 #endif // IS_SFU == 1
 
-
+#define VOLIDX_LIM_OUT   (1)
 
 //int denoiser(void)
 int denoiser(void)
@@ -507,10 +495,7 @@ int denoiser(void)
 
     setup_pads();
     setup_button();
-
-    pi_task_block(&wait_task);
-    pi_task_wait_on(&wait_task);   //wait while first push on button
-
+    mode = 0;
 
         /****
         Change Frequency if needed
@@ -604,16 +589,9 @@ int denoiser(void)
     // *Magic_Setting = 3 << 10 | 3 << 18;
     
     // Configure PDM in
-    //if (open_i2s_PDM(&i2s_sai1, SAI1,   3072000, 2, 0)) return -1;
+    //if (open_i2s_PDM(&i2s_sai1, SAI1,   3072000, 1, 0)) return -1;
     if (open_i2s_PDM(&i2s_sai0, SAI0, 3072000, 1, 0)) return -1;
     //if (open_i2s_PDM(&i2s_sai0, SAI0,   3072000, 3, 0)) return -1;
-
-
-    // Configure PDM out
-    //if (open_i2s_PDM(&i2s_sai2, SAI2, 3072000, 0, 0)) return -1;
-    if (open_i2s_PDM(&i2s_sai1, SAI1, 3072000, 1, 0)) return -1;
-    //if (open_i2s_PDM(&i2s_sai1, SAI1, 3072000, 3, 0)) return -1;
-
 
 
     StartSFU(FREQ_SFU*1000*1000, 1);
@@ -644,58 +622,32 @@ int denoiser(void)
     SFU_GraphConnectIO(SFU_Name(GraphINOUT, In_1), SAI_ITF_IN, 0, &SFU_RTD(GraphINOUT));  //SDI
 
     SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out_1), ChanInCtxt_0->ChannelId, 0, &SFU_RTD(GraphINOUT));
+    SFU_GraphConnectIO(SFU_Name(GraphINOUT, In1), ChanOutCtxt_0->ChannelId, 0, &SFU_RTD(GraphINOUT));
     
+    // Connect Channels to SFU for PDM OUT
+    SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out), SAI_ITF_OUT, 1, &SFU_RTD(GraphINOUT));    //SDO
 
-    // Connect Channels to SFU for PDM OUT 1
-    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, In1), ChanOutCtxt_0->ChannelId, 0, &SFU_RTD(GraphINOUT));
-    //Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT_1, 0, &SFU_RTD(GraphINOUT));    //SDI
-    //Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT_1, 2, &SFU_RTD(GraphINOUT));    //SDO
-    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT_1, 1, &SFU_RTD(GraphINOUT));    //SDO
-
-
-
-    // Connect Channels to SFU for PDM OUT 2
-    //Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, In2), ChanOutCtxt_1->ChannelId, 0, &SFU_RTD(GraphINOUT));
-    //Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out2), SAI_ITF_OUT_2, 0, &SFU_RTD(GraphINOUT));    //SDI
-    //Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out2), SAI_ITF_OUT_2, 2, &SFU_RTD(GraphINOUT));    //SDO
-    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out2), SAI_ITF_OUT_2, 1, &SFU_RTD(GraphINOUT));    //SDO
-
-
-
-    // SFU_GraphSetClock(SFU_Name(GraphINOUT, In1), CLK_SAI0, &SFU_RTD(GraphINOUT));
-    // SFU_GraphSetClock(SFU_Name(GraphINOUT, Out1), CLK_SAI1, &SFU_RTD(GraphINOUT));
-    // SFU_GraphSetClock(SFU_Name(GraphINOUT, Out2), CLK_SAI0, &SFU_RTD(GraphINOUT));
-
+    
+    //SFU_SetVolume(VOLIDX_LIM_OUT, 0, 0);    // use it to remove mic input
 
 
     //Next API will have a value to replace this high number with -1
     //To be able to 
-
     SFU_Enqueue_uDMA_Channel_Multi(ChanInCtxt_0, CHUNK_NUM, BufferInList, BUFF_SIZE, 0);
 
     //Starting In and Out Graphs
     pi_i2s_ioctl(&i2s_sai0, PI_I2S_IOCTL_START, NULL);
-    pi_i2s_ioctl(&i2s_sai1, PI_I2S_IOCTL_START, NULL);
-
+    //pi_i2s_ioctl(&i2s_sai1, PI_I2S_IOCTL_START, NULL);
     
-
-    //fxl6408_setup();
-
     // Setup 2 DAC
-    if(setup_dac((0x34 << 1)) || setup_dac((0x36 << 1)))
+    //if(setup_dac((0x34 << 1)) || setup_dac((0x36 << 1)))
+    if(setup_dac((0x36 << 1)))
     {
         printf("Failed to setup DAC\n");
         pmsis_exit(-1);
-    }
+    }                                                                                   
     pi_time_wait_us(1000000);
     printf("Setup DAC OK\n"); 
-
-    // pi_i2s_ioctl(&i2s_sai0, PI_I2S_IOCTL_START, NULL);
-    // pi_i2s_ioctl(&i2s_sai1, PI_I2S_IOCTL_START, NULL);
-
-    //Enable slicer
-    //i2c_slider = pi_l2_malloc(sizeof(pi_device_t));
-    //init_ads1014(i2c_slider);
 
 #else //IS_SFU == 0 
 
@@ -852,11 +804,35 @@ int denoiser(void)
 #else   
 
     // audio from SFU
-
+    uint32_t loop = 0;
+    uint32_t button_state;
+    uint8_t flag = 0;
     chunk_in_cnt=0;
     SFU_StartGraph(&SFU_RTD(GraphINOUT));
     while(1){
-        //slider_value = ads1014_read(i2c_slider, 0);
+
+        // if(flag)
+        // {
+        //     flag=0;
+        //     loop=0;
+        //     pi_gpio_pin_read(gpio_button_pin, &button_state);   
+        //     if (button_state == 0)
+        //         mode = !mode;
+        //     else
+        //         mode = mode;  
+        // }
+        // else
+        // {
+        //     if (loop >= 150)
+        //     {
+        //         loop = 0;
+        //         flag = 1;
+        //     }
+        //     else
+        //         loop++;
+        // }
+
+
         pi_evt_wait_on(&proc_task);
 
 #ifdef AUDIO_EVK
@@ -869,6 +845,8 @@ int denoiser(void)
         //First Copy previous loop processed frame to output
         for(int i=0;i<BUFF_SIZE/4;i++) {
             ((int32_t*)BufferOutList[round_out])[i]= (int32_t)((float)(Audio_Frame_temp[i])*((int)(1<<Q_BIT_OUT)));
+            //((int32_t*)BufferOutList[round_out])[i]= 0;
+
         }
 
 

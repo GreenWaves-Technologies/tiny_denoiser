@@ -39,22 +39,15 @@ Filters:
 Nodes:
     In_1 = Node(PDM_IN, CIC_N, CIC_M, CIC_R, CIC_Shift);    // 3.072 MHZ Pdm In -> 48 KHz PCM out
     graph_pdm_inout__Resampler_input = Node(RESAMPLER.0, -3, 0); // 48 KHz PCM -> 16 KHz PCM out
+    Lim1 = Node(LIMITER, 1, Lim1);
+    Norm = Node(NORMSAT.0);                     
     Out_1 = Node(MEM_OUT);
 
-    graph_pdm_inout__Resampler_output = Node(RESAMPLER.1, 3, 0); // 16 KHz PCM -> 48 KHz PCM out
 
     In1 = Node(MEM_IN);
-    //graph_pdm_inout__Resampler_output1 = Node(RESAMPLER.1, 3, 0); // 16 KHz PCM -> 48 KHz PCM out
-    Out1 = Node(PDM_OUT, 4, Modulator_Lin); // 48 KHz PCM -> 3.072 MHZ Pdm Out
+    graph_pdm_inout__Resampler_output = Node(RESAMPLER.1, 3, 0); // 16 KHz PCM -> 48 KHz PCM out
+    Out = Node(PDM_OUT, 4, Modulator_Lin); // 48 KHz PCM -> 3.072 MHZ Pdm Out
 
-    //In2 = Node(MEM_IN);
-    //graph_pdm_inout__Resampler_output2 = Node(RESAMPLER.2, 3, 0); // 16 KHz PCM -> 48 KHz PCM out
-    Out2 = Node(PDM_OUT, 4, Modulator_Lin); // 48 KHz PCM -> 3.072 MHZ Pdm Out
-
-    Norm = Node(NORMSAT.0);
-    Lim1 = Node(LIMITER, 3, Lim1);
-
-    split = Node(SPLITTER.0, 2); 
 
 Configure:
     
@@ -65,23 +58,16 @@ Configure:
     Norm.Scaling = 0;
     Lim1.Decimation = 20;
 
-
 Connects:
-    Connect(In1, graph_pdm_inout__Resampler_output);
-    Connect(graph_pdm_inout__Resampler_output, split);
-    Connect(split.0, Out1);
-    Connect(split.1, Out2);
 
-
- // Connect(In2, graph_pdm_inout__Resampler_output2);
- // Connect(graph_pdm_inout__Resampler_output2, Out2);
-
-    
     Connect(In_1, graph_pdm_inout__Resampler_input);
     Connect(graph_pdm_inout__Resampler_input, Lim1);
     Connect(Lim1, Norm);
     Connect(Norm, Out_1);
 
-SFU_CloseGraph();
+    Connect(In1, graph_pdm_inout__Resampler_output);
+    Connect(graph_pdm_inout__Resampler_output, Out);
 
+
+SFU_CloseGraph();
 
