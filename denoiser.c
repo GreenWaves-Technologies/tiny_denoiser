@@ -415,70 +415,25 @@ static void setup_pads(void)
     pi_pad_mux_group_set(PAD_UART1_TX, PI_PAD_MUX_GROUP_UART1_TX);
 }
 
-
-static void __task_delay_func()
-{
-    if (mode == 0)
-    {
-        mode = 1;
-        pi_task_release(&wait_task); // TODO: To uncomment when booting from MRAM //
-    }
-    else if (mode == 1)
-    {
-        mode = 0;
-    }
-    delay_flag = 0;
-}
-
-static void __pi_gpio_cb(void* args)
-{
-    //printf("gpio call back \n");
-    pi_gpio_pin_notif_clear(gpio_button_pin);
-    uint32_t button_state;
-    pi_gpio_pin_read(gpio_button_pin, &button_state);
-    if (button_state == 0)
-    {
-        if (delay_flag == 0)
-        {
-            pi_task_push_delayed_us(&delay_task, BUTTON_MIN_DELTA);
-            delay_flag = 1;
-        }
-        else
-        {
-        }
-    }
-    else
-    {
-        if (delay_flag == 1)
-        {
-            pi_task_cancel_delayed_us(&delay_task);
-            delay_flag = 0;
-        }
-        else
-        {
-        }
-    }   
-}
-
 static int setup_button()   
 {
     gpio_button_pin = 47;
     pi_pad_set_function(gpio_button_pin, PI_PAD_FUNC1);
 
-    pi_gpio_flags_e cfg_flags = PI_GPIO_INPUT;
+    pi_gpio_flags_e cfg_flags = PI_GPIO_INPUT
                                 //| PI_GPIO_PULL_ENABLE
-                                //| PI_GPIO_PULL_UP
+                                | PI_GPIO_PULL_UP;
                                 //| PI_GPIO_DRIVE_STRENGTH_LOW;    
 
     pi_gpio_pin_configure(gpio_button_pin, cfg_flags);
-    pi_gpio_pin_notif_clear(gpio_button_pin);    /* initialize and attach callback */
-    pi_task_callback(&cb_gpio_task, __pi_gpio_cb, NULL);
-    pi_task_callback(&delay_task, __task_delay_func, NULL);    
+    // pi_gpio_pin_notif_clear(gpio_button_pin);    /* initialize and attach callback */
+    // pi_task_callback(&cb_gpio_task, __pi_gpio_cb, NULL);
+    // pi_task_callback(&delay_task, __task_delay_func, NULL);    
 
-    if (pi_gpio_pin_task_add(gpio_button_pin, &cb_gpio_task, PI_GPIO_NOTIF_EDGE))
-    {
-        return -1;
-    }
+    // if (pi_gpio_pin_task_add(gpio_button_pin, &cb_gpio_task, PI_GPIO_NOTIF_EDGE))
+    // {
+    //     return -1;
+    // }
 
     return 0;
 }
@@ -804,34 +759,16 @@ int denoiser(void)
 #else   
 
     // audio from SFU
-    uint32_t loop = 0;
     uint32_t button_state;
-    uint8_t flag = 0;
     chunk_in_cnt=0;
     SFU_StartGraph(&SFU_RTD(GraphINOUT));
     while(1){
 
-        // if(flag)
-        // {
-        //     flag=0;
-        //     loop=0;
-        //     pi_gpio_pin_read(gpio_button_pin, &button_state);   
-        //     if (button_state == 0)
-        //         mode = !mode;
-        //     else
-        //         mode = mode;  
-        // }
-        // else
-        // {
-        //     if (loop >= 150)
-        //     {
-        //         loop = 0;
-        //         flag = 1;
-        //     }
-        //     else
-        //         loop++;
-        // }
-
+        pi_gpio_pin_read(gpio_button_pin,&button_state);
+        if(!button_state)
+            mode = 1;
+        else 
+            mode = 0;
 
         pi_evt_wait_on(&proc_task);
 
