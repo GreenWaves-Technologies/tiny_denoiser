@@ -420,9 +420,9 @@ static int setup_button()
     gpio_button_pin = 47;
     pi_pad_set_function(gpio_button_pin, PI_PAD_FUNC1);
 
-    pi_gpio_flags_e cfg_flags = PI_GPIO_INPUT
+    pi_gpio_flags_e cfg_flags = PI_GPIO_INPUT;
                                 //| PI_GPIO_PULL_ENABLE
-                                | PI_GPIO_PULL_UP;
+                                //| PI_GPIO_PULL_UP;
                                 //| PI_GPIO_DRIVE_STRENGTH_LOW;    
 
     pi_gpio_pin_configure(gpio_button_pin, cfg_flags);
