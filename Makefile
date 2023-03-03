@@ -27,7 +27,7 @@ ifeq ($(APP_MODE), 0)
 	APP_SRCS   += $(TARGET_BUILD_DIR)/GraphINOUT_L2_Descr.c $(SFU_RUNTIME)/SFU_RT.c
 	APP_CFLAGS += -I$(TARGET_BUILD_DIR) -I$(SFU_RUNTIME)/include
 	APP_SRCS += dac.c
-	io=uart
+	#io=uart
 	DEMO=1
 
 endif

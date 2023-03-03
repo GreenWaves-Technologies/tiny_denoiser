@@ -4,18 +4,40 @@ Nodes:
     In_1 = Node(PDM_IN.0, 8, 2, 64, 24);	// 3.072 MHZ Pdm In -> 48 KHz PCM out
     resampler0 = Node(RESAMPLER.0, -3, 0); // 48 KHz PCM -> 16 KHz PCM out
     Out_1 = Node(MEM_OUT);
+    //resampler1 = Node(RESAMPLER.1, 3, 0); // 48 KHz PCM <- 16 KHz PCM out
+    //resampler2 = Node(RESAMPLER.2, 3, 0); // 48 KHz PCM <- 16 KHz PCM out
+
+   
 
     In1 = Node(MEM_IN);
-    split = Node(SPLITTER.0, 2); 
+    split1 = Node(SPLITTER.0, 2); 
     Out0 = Node(STREAM_OUT.0);
     Out1 = Node(STREAM_OUT.1);
+
+    In_2 = Node(STREAM_IN.0);
+    In_3 = Node(STREAM_IN.1);
+
+    Out3 = Node(STREAM_OUT.2);
+    Out4 = Node(STREAM_OUT.3);
+    //split2 = Node(SPLITTER.1, 2); 
+
 
 Connects:
     Connect(In_1, resampler0);
     Connect(resampler0, Out_1);
 
-    Connect(In1, split);
-    Connect(split.0, Out0);
-    Connect(split.1, Out1);
+    Connect(In1, split1);
+    Connect(split1.0, Out0);
+    Connect(split1.1, Out1);
+
+    //Connect(In_2,resampler1);
+    //Connect(resampler1,Out3);
+    Connect(In_2,Out3);
+
+
+    //Connect(In_3,resampler2);
+    //Connect(resampler2,Out4);
+    Connect(In_3,Out4);
+
 
 SFU_CloseGraph();

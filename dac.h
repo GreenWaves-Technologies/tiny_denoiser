@@ -8,5 +8,5 @@
  *
  * \return 0 if successful, an error code otherwise
  */
-int setup_dac(uint8_t id);
+int setup_dac(uint8_t addr);
 int fxl6408_setup(void);
