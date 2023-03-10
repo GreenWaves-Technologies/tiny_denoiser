@@ -299,6 +299,8 @@ static void RunDenoiser()
     #define SAI_SDI(itf)         (48+(itf*4)+2)
     #define SAI_SDO(itf)         (48+(itf*4)+3)
 
+
+
     SFU_uDMA_Channel_T *ChanOutCtxt_0;
     SFU_uDMA_Channel_T *ChanOutCtxt_1;
     SFU_uDMA_Channel_T *ChanInCtxt_0;
@@ -313,10 +315,27 @@ static void RunDenoiser()
     int nb_transfers;
     int current_size[2];
     static pi_event_t proc_task;
+    
 
 
     static int open_i2s_PDM(struct pi_device *i2s, unsigned int SAIn, unsigned int Frequency, unsigned int Direction, unsigned int Diff)
     {
+        uint8_t gpiovalue=0;
+        pi_time_wait_us(20000);
+        pi_gpio_pin_read(gpio_button_pin,&gpiovalue);
+        while (gpiovalue != 0)
+        {
+            pi_time_wait_us(20000);
+            pi_gpio_pin_read(gpio_button_pin,&gpiovalue);
+            
+        }
+        pi_time_wait_us(200000);
+        while (gpiovalue != 1)
+        {       
+            pi_gpio_pin_read(gpio_button_pin,&gpiovalue);
+            pi_time_wait_us(20000);
+        }
+
         struct pi_i2s_conf i2s_conf;
         pi_i2s_conf_init(&i2s_conf);
 
