@@ -71,7 +71,7 @@ def _run_metrics(clean, estimate, samplerate):
 UPDATE_MASK_EACH = 1
 def single_audio_inference(G: NNGraph, stft_frame_i_T, stats_collector: ActivationRangesCollector = None, quant_exec=False):
     stft_frame_o_T = np.empty_like(stft_frame_i_T)
-    rnn_nodes = [node for node in G.nodes(node_classes=RNNNodeBase)]
+    rnn_nodes = [node for node in G.nodes(node_classes=RNNNodeBase, sort=True)]
     count_rnn_states = sum([2 if isinstance(node, LSTMNode) else 1 for node in G.nodes(node_classes=RNNNodeBase)])
     len_seq = stft_frame_i_T.shape[0]
 
