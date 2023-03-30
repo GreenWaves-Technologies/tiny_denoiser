@@ -2,6 +2,7 @@
 import argparse
 import pickle
 from matplotlib import pyplot as plt
+import pandas as pd
 from tqdm import tqdm
 from nntool.api import NNGraph
 from nntool.graph.types import LSTMNode, RNNNodeBase
@@ -23,13 +24,19 @@ N_FFT = 512
 SAMPLERATE = 16000
 WIN_FUNC = "hann"
 
-def open_wav(file, expected_sr=SAMPLERATE):
+def open_wav(file, expected_sr=SAMPLERATE, verbose=False):
     data, sr = sf.read(file)
-    assert sr == expected_sr
+    if sr != expected_sr:
+        if verbose:
+            print(f"expected sr: {expected_sr} real: {sr} -> resampling")
+        data = librosa.resample(data, orig_sr=sr, target_sr=expected_sr)
     return data
 
 def preprocessing(input_file):
-    data = open_wav(input_file)
+    if isinstance(input_file, str):
+        data = open_wav(input_file)
+    else:
+        data = input_file
     stft = librosa.stft(data, n_fft=N_FFT, hop_length=HOP_LENGTH, win_length=WIN_LENGTH, window=WIN_FUNC, center=False)
     return stft
 
@@ -124,14 +131,26 @@ def get_astats(G: NNGraph, dataset):
     return stats_collector.stats
 
 
-def test_on_single_audio(G: NNGraph, audio_file, output_file, quant_exec=True):
-    print(f"Running model on sample {audio_file} and writing result to {output_file}")
-    stft = preprocessing(audio_file)
+def test_on_single_audio(G: NNGraph, noisy_file, output_file, quant_exec=True, clean_file=None):
+    print(f"Running model on sample {noisy_file} and writing result to {output_file}")
+    noisy_data = open_wav(noisy_file)
+    stft = preprocessing(noisy_data)
     stft_frame_i_T = np.transpose(stft) # swap the axis to select the tmestamp
     stft_frame_o_T = single_audio_inference(G, stft_frame_i_T, quant_exec=quant_exec, stats_collector=None)
     estimate = postprocessing(stft_frame_o_T.T)
     # Write out audio as 24bit PCM WAV
     sf.write(output_file, estimate, SAMPLERATE)
+    if clean_file:
+        clean_data = open_wav(clean_file)
+        sz0 = clean_data.shape[0]
+        sz1 = estimate.shape[0]
+        if sz0 > sz1:
+            estimate = np.pad(estimate, (0,sz0-sz1))
+        else:
+            estimate = estimate[:sz0]
+        pesq_org_i, stoi_org_i =  _run_metrics(clean_data, noisy_data, SAMPLERATE)
+        pesq_denoised_i, stoi_denoised_i =  _run_metrics(clean_data, estimate, SAMPLERATE)
+        print(f"{clean_file}\twith pesq, stoi=\t({pesq_denoised_i:.4f},{stoi_denoised_i:.4f})\torg: ({pesq_org_i:.4f},{stoi_org_i:.4f})")
 
 
 def test_on_target(G: NNGraph, audio_file):
@@ -158,7 +177,7 @@ def test_on_target(G: NNGraph, audio_file):
     return res
 
 
-def test_model_on_dataset(G: NNGraph, noisy_dataset, clean_dataset, quant_exec=False, output_dataset=None, dns_dataset=False):
+def test_model_on_dataset(G: NNGraph, noisy_dataset, clean_dataset, quant_exec=False, output_dataset=None, dns_dataset=False, verbose=True):
     print(f"Testing on dataset: {noisy_dataset}")
     files = os.listdir(noisy_dataset)
     metric = []
@@ -192,12 +211,13 @@ def test_model_on_dataset(G: NNGraph, noisy_dataset, clean_dataset, quant_exec=F
             sf.write(output_file, estimate, SAMPLERATE)
 
         pesq_i, stoi_i =  _run_metrics(clean_data, estimate, SAMPLERATE)
-        print(f"Sample ({c}/{len(files)})\t{filename}\twith pesq=\t{pesq_i}\tand stoi=\t{stoi_i}")
+        if verbose:
+            print(f"Sample ({c}/{len(files)})\t{filename}\twith pesq=\t{pesq_i}\tand stoi=\t{stoi_i}")
 
-        metric.append([pesq_i, stoi_i])
+        metric.append([filename, pesq_i, stoi_i])
     return metric
 
-def build_nntool_graph(model_path, astats_file, test_float=False, requantize=False, quant_dataset="./samples/quant/", states_as_inout=True):
+def build_nntool_graph(model_path, astats_file, test_float=False, requantize=False, quant_dataset="./samples/quant/", states_as_inout=True, qtype="mixed"):
     G = NNGraph.load_graph(model_path)
     G.adjust_order()
     G.fusions("scaled_match_group")
@@ -218,13 +238,42 @@ def build_nntool_graph(model_path, astats_file, test_float=False, requantize=Fal
                 with open(astats_file, 'wb') as fp:
                     pickle.dump(astats, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
-        graph_opts = {
-            "clip_type": "std3" 
-        }
-        node_opts = {
-            nname: { "scheme": "FLOAT", "float_type": "float16" }
-            for nname in ["input_1", "Conv_0_reshape_in", "Conv_0_fusion", "Conv_147_fusion", "Conv_150_fusion", "Conv_150_reshape_out", "Sigmoid_151", "output_1"]
-        }
+        if qtype == "mixed":
+            graph_opts = {
+                "clip_type": "std3",
+                "allow_asymmetric_out": True
+            }
+            node_opts = {
+                nname: { "scheme": "FLOAT", "float_type": "float16" }
+                for nname in [
+                    "input_1",
+                    "Conv_0_reshape_in",
+                    "Conv_0_fusion",
+                    "Conv_147_fusion",
+                    "Conv_150_fusion",
+                    "Conv_150_reshape_out",
+                    "Conv_139_fusion",
+                    "Conv_142_fusion",
+                    "Conv_142_reshape_out",
+                    "Sigmoid_151",
+                    "output_1"
+                ]
+            }
+        elif qtype == "int8":
+            graph_opts = {
+                "clip_type": "std3",
+                "allow_asymmetric_out": True
+            }
+            node_opts = None
+        elif qtype == "fp16":
+            graph_opts = {
+                "scheme": "FLOAT",
+                "float_type": "float16"
+            }
+            node_opts = None
+        else:
+            raise ValueError(f"Quant Type {qtype} not supported")
+
         G.quantize(
             astats,
             graph_options=graph_opts,
@@ -258,8 +307,12 @@ if __name__ == "__main__":
                         help="Requantize model")
     parser.add_argument("--audio_sample", type=str, default=None,
                         help="Path to audio file to test in sample mode")
+    parser.add_argument("--clean_sample", type=str, default=None,
+                        help="Path to audio file to test in sample mode")
     parser.add_argument("--output_sample", type=str, default=None,
                         help="Path to output audio file from sample")
+    parser.add_argument("--verbose", action="store_true",
+                        help="Print pesq after each sample")
     args = parser.parse_args()
 
     G = build_nntool_graph(args.model_path, args.astats_file, test_float=args.test_float, quant_dataset=args.quant_dataset, requantize=args.requantize, states_as_inout=not args.mode == "inference")
@@ -271,17 +324,21 @@ if __name__ == "__main__":
         if args.output_dataset and not os.path.exists(args.output_dataset):
             os.makedirs(args.output_dataset)
 
-        results = test_model_on_dataset(G, args.noisy_dataset, args.clean_dataset, quant_exec=not args.test_float, output_dataset=args.output_dataset, dns_dataset=args.dns_testing)
+        results = test_model_on_dataset(G, args.noisy_dataset, args.clean_dataset, quant_exec=not args.test_float, output_dataset=args.output_dataset, dns_dataset=args.dns_testing, verbose=args.verbose)
         pesq_i = 0
         stoi_i = 0
-        for p, s in results:
+        for _, p, s in results:
             pesq_i += p
             stoi_i += s
         final_pesq = pesq_i / len(results)
         final_stoi = stoi_i / len(results)
         print("Test set performance:PESQ=\t", final_pesq, "\t STOI=\t", final_stoi, '\t over', len(results), 'samples')
+        results.append(["average", final_pesq, final_stoi])
+        df = pd.DataFrame(results, columns=["filename", "PESQ", "STOI"])
+        print(df)
+
     elif args.mode == "sample":
-        test_on_single_audio(G, args.audio_sample, args.output_sample, quant_exec=not args.test_float)
+        test_on_single_audio(G, args.audio_sample, args.output_sample, quant_exec=not args.test_float, clean_file=args.clean_sample)
     elif args.mode == "inference":
         res = test_on_target(G, args.audio_sample)
         print(res.pretty_performance())
