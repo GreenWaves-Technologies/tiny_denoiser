@@ -23,8 +23,13 @@ N_FFT = 512
 SAMPLERATE = 16000
 WIN_FUNC = "hann"
 
+def open_wav(file, expected_sr=SAMPLERATE):
+    data, sr = sf.read(file)
+    assert sr == expected_sr
+    return data
+
 def preprocessing(input_file):
-    data, _ = librosa.load(input_file, sr=SAMPLERATE)
+    data = open_wav(input_file)
     stft = librosa.stft(data, n_fft=N_FFT, hop_length=HOP_LENGTH, win_length=WIN_LENGTH, window=WIN_FUNC, center=False)
     return stft
 
@@ -153,7 +158,7 @@ def test_on_target(G: NNGraph, audio_file):
     return res
 
 
-def test_model_on_dataset(G: NNGraph, noisy_dataset, clean_dataset, quant_exec=False, output_dataset=None):
+def test_model_on_dataset(G: NNGraph, noisy_dataset, clean_dataset, quant_exec=False, output_dataset=None, dns_dataset=False):
     print(f"Testing on dataset: {noisy_dataset}")
     files = os.listdir(noisy_dataset)
     metric = []
@@ -167,8 +172,13 @@ def test_model_on_dataset(G: NNGraph, noisy_dataset, clean_dataset, quant_exec=F
         estimate = postprocessing(stft_frame_o_T.T)
 
         # compute the metrics
-        clean_file = os.path.join(clean_dataset, filename)
-        clean_data, _ = librosa.load(clean_file, sr=SAMPLERATE)
+        if dns_dataset:
+            clean_filename = "clean_fileid_" + filename.split("_")[-1]
+        else:
+            clean_filename = filename
+
+        clean_file = os.path.join(clean_dataset, clean_filename)
+        clean_data = open_wav(clean_file)
         sz0 = clean_data.shape[0]
         sz1 = estimate.shape[0]
         if sz0 > sz1:
@@ -239,6 +249,7 @@ if __name__ == "__main__":
                         help="Path to dataset folder")
     parser.add_argument("--noisy_dataset", type=str, default=None,
                         help="Path to dataset folder")
+    parser.add_argument("--dns_testing", action="store_true")
     parser.add_argument("--output_dataset", type=str, default=None,
                         help="Path to output audio files dataset")
     parser.add_argument("--test_float", action="store_true",
@@ -253,13 +264,14 @@ if __name__ == "__main__":
 
     G = build_nntool_graph(args.model_path, args.astats_file, test_float=args.test_float, quant_dataset=args.quant_dataset, requantize=args.requantize, states_as_inout=not args.mode == "inference")
     print(G.show(G.input_nodes()))
-    print(G.qshow())
+    if not args.test_float:
+        print(G.qshow())
 
     if args.mode == "test":
         if args.output_dataset and not os.path.exists(args.output_dataset):
             os.makedirs(args.output_dataset)
 
-        results = test_model_on_dataset(G, args.noisy_dataset, args.clean_dataset, quant_exec=not args.test_float, output_dataset=args.output_dataset)
+        results = test_model_on_dataset(G, args.noisy_dataset, args.clean_dataset, quant_exec=not args.test_float, output_dataset=args.output_dataset, dns_dataset=args.dns_testing)
         pesq_i = 0
         stoi_i = 0
         for p, s in results:
