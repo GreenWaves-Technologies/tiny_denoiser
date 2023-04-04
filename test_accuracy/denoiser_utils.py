@@ -112,9 +112,9 @@ def single_audio_inference(G: NNGraph, stft_frame_i_T, stats_collector: Activati
     # plt.show()
     return stft_frame_o_T
 
-def get_astats(G: NNGraph, dataset):
+def get_astats(G: NNGraph, dataset, max_samples=1000):
     stats_collector = ActivationRangesCollector(use_ema=False)
-    files = os.listdir(dataset)
+    files = os.listdir(dataset)[:max_samples]
     for c, filename in tqdm(enumerate(files)):
         print(f"Collecting Stats from file {c+1}/{len(files)}")
         input_data = os.path.join(dataset, filename)
