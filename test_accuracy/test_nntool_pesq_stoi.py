@@ -8,128 +8,13 @@ from nntool.api import NNGraph
 from nntool.graph.types import LSTMNode, RNNNodeBase
 from nntool.stats.activation_ranges_collector import ActivationRangesCollector
 from nntool.api.utils import model_settings
-import librosa
 import numpy as np
 import os
-from pesq import pesq
-from pystoi import stoi
 import soundfile as sf
+from denoiser_utils import single_audio_inference, get_astats, _run_metrics, preprocessing, postprocessing, open_wav, SAMPLERATE
 
 EUCLIDEAN_DISTANCES = []
 RNN_STATE_SIZE = 256
-
-WIN_LENGTH = 400
-HOP_LENGTH = 100
-N_FFT = 512
-SAMPLERATE = 16000
-WIN_FUNC = "hann"
-
-def open_wav(file, expected_sr=SAMPLERATE, verbose=False):
-    data, sr = sf.read(file)
-    if sr != expected_sr:
-        if verbose:
-            print(f"expected sr: {expected_sr} real: {sr} -> resampling")
-        data = librosa.resample(data, orig_sr=sr, target_sr=expected_sr)
-    return data
-
-def preprocessing(input_file):
-    if isinstance(input_file, str):
-        data = open_wav(input_file)
-    else:
-        data = input_file
-    stft = librosa.stft(data, n_fft=N_FFT, hop_length=HOP_LENGTH, win_length=WIN_LENGTH, window=WIN_FUNC, center=False)
-    return stft
-
-def postprocessing(stfts):
-    data = librosa.istft(stfts, hop_length=HOP_LENGTH, win_length=WIN_LENGTH, window=WIN_FUNC, center=False)
-    return data
-
-def get_pesq(ref_sig, out_sig, sr):
-    """Calculate PESQ.
-    Args:
-        ref_sig: numpy.ndarray, [B, T]
-        out_sig: numpy.ndarray, [B, T]
-    Returns:
-        PESQ
-    """
-    pesq_val = 0
-    for i in range(len(ref_sig)):
-        pesq_val += pesq(sr, ref_sig[i], out_sig[i], 'wb')
-    return pesq_val
-
-def get_stoi(ref_sig, out_sig, sr):
-    """Calculate STOI.
-    Args:
-        ref_sig: numpy.ndarray, [B, T]
-        out_sig: numpy.ndarray, [B, T]
-    Returns:
-        STOI
-    """
-    stoi_val = 0
-    for i in range(len(ref_sig)):
-        stoi_val += stoi(ref_sig[i], out_sig[i], sr, extended=False)
-    return stoi_val
-
-def _run_metrics(clean, estimate, samplerate):
-    pesq_i = pesq(samplerate, clean, estimate, 'wb')
-    stoi_i = stoi(clean, estimate, samplerate, extended=False)
-    return pesq_i, stoi_i
-
-UPDATE_MASK_EACH = 1
-def single_audio_inference(G: NNGraph, stft_frame_i_T, stats_collector: ActivationRangesCollector = None, quant_exec=False):
-    stft_frame_o_T = np.empty_like(stft_frame_i_T)
-    rnn_nodes = [node for node in G.nodes(node_classes=RNNNodeBase, sort=True)]
-    count_rnn_states = sum([2 if isinstance(node, LSTMNode) else 1 for node in G.nodes(node_classes=RNNNodeBase)])
-    len_seq = stft_frame_i_T.shape[0]
-
-    #init lstm to zeros
-    rnn_states = [np.zeros(RNN_STATE_SIZE)] * count_rnn_states
-    stft_mask = np.zeros(257)
-    masks = []
-    for i in tqdm(range(len_seq)):
-        stft_clip = stft_frame_i_T[i]
-        stft_clip_mag = np.abs(stft_clip)
-        if not (i % UPDATE_MASK_EACH):
-            data = [stft_clip_mag, *rnn_states]
-            outputs = G.execute(data, dequantize=quant_exec)
-
-            cnt = 0
-            for node in rnn_nodes:
-                rnn_states[cnt] = outputs[node.step_idx][0]
-                cnt += 1
-                if isinstance(node, LSTMNode):
-                    rnn_states[cnt] = outputs[node.step_idx][1]
-                    cnt += 1
-
-            if stats_collector:
-                stats_collector.collect_stats(G, data)
-
-            new_stft_mask = outputs[G['output_1'].step_idx][0].squeeze()
-            # See how the mask changes over time
-            # EUCLIDEAN_DISTANCES.append(np.linalg.norm(new_stft_mask - stft_mask))
-            # masks.append( new_stft_mask)
-            stft_mask = new_stft_mask
-
-        stft_clip = stft_clip * stft_mask
-        stft_frame_o_T[i] = stft_clip
-    # fig, ax = plt.subplots()
-    # ax.plot(EUCLIDEAN_DISTANCES)
-    # ax.imshow(np.array(masks))
-    # plt.show()
-    return stft_frame_o_T
-
-def get_astats(G: NNGraph, dataset):
-    stats_collector = ActivationRangesCollector(use_ema=False)
-    files = os.listdir(dataset)
-    for c, filename in tqdm(enumerate(files)):
-        print(f"Collecting Stats from file {c+1}/{len(files)}")
-        input_data = os.path.join(dataset, filename)
-        stft = preprocessing(input_data)
-
-        stft_frame_i_T = np.transpose(stft) # swap the axis to select the tmestamp
-        _ = single_audio_inference(G, stft_frame_i_T, stats_collector=stats_collector, quant_exec=False)
-    return stats_collector.stats
-
 
 def test_on_single_audio(G: NNGraph, noisy_file, output_file, quant_exec=True, clean_file=None):
     print(f"Running model on sample {noisy_file} and writing result to {output_file}")
@@ -240,7 +125,7 @@ def build_nntool_graph(model_path, astats_file, test_float=False, requantize=Fal
 
         if qtype == "mixed":
             graph_opts = {
-                "clip_type": "std3",
+                "clip_type": "none",
                 "allow_asymmetric_out": True
             }
             node_opts = {
@@ -261,7 +146,7 @@ def build_nntool_graph(model_path, astats_file, test_float=False, requantize=Fal
             }
         elif qtype == "int8":
             graph_opts = {
-                "clip_type": "std3",
+                "clip_type": "none",
                 "allow_asymmetric_out": True
             }
             node_opts = None
@@ -288,7 +173,7 @@ if __name__ == "__main__":
     #script mode
     parser.add_argument("--model_path", type=str, required=True,
                         help="Path to onnx file")
-    parser.add_argument("--mode", type=str, default="test", choices=["sample", "test", "inference"],
+    parser.add_argument("--mode", type=str, default="test", choices=["sample", "test", "inference", "quantize"],
                         help="Choose between sample | test")
     parser.add_argument("--astats_file", type=str, default=None,
                         help="Path to statistics pickle")
@@ -315,10 +200,19 @@ if __name__ == "__main__":
                         help="Print pesq after each sample")
     args = parser.parse_args()
 
-    G = build_nntool_graph(args.model_path, args.astats_file, test_float=args.test_float, quant_dataset=args.quant_dataset, requantize=args.requantize, states_as_inout=not args.mode == "inference")
+    G = build_nntool_graph(
+        args.model_path,
+        args.astats_file,
+        test_float=args.test_float and not args.mode == "quantize",
+        quant_dataset=args.quant_dataset,
+        requantize=args.requantize or args.mode == "quantize",
+        states_as_inout=True
+    )
     print(G.show(G.input_nodes()))
     if not args.test_float:
         print(G.qshow())
+    if args.mode == "quantize":
+        exit
 
     if args.mode == "test":
         if args.output_dataset and not os.path.exists(args.output_dataset):
