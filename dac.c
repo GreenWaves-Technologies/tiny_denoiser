@@ -26,8 +26,8 @@ static uint8_t read_reg8(pi_device_t *dev, uint8_t addr)
 int fxl6408_setup()
 {
     // Setting pads 42 & 43 to Alternate 0 function to enable I2C1 peripheral
-    pi_pad_set_function(PI_PAD_042,  PI_PAD_FUNC0);
-    pi_pad_set_function(PI_PAD_043,  PI_PAD_FUNC0);
+    pi_pad_function_set(PI_PAD_042,  PI_PAD_FUNC0);
+    pi_pad_function_set(PI_PAD_043,  PI_PAD_FUNC0);
 
     //printf("Testing fxl6408\n");
     int errors = 0;
@@ -67,7 +67,7 @@ int setup_dac(uint8_t id)
     /* The I2C Mux is controlled by the GPIO A68 */
     pi_gpio_e gpio_pin_o = PI_GPIO_A68; 
 
-    pi_pad_set_function(PI_PAD_068, PI_PAD_FUNC1);
+    pi_pad_function_set(PI_PAD_068, PI_PAD_FUNC1);
 
     pi_gpio_flags_e cfg_flags_out = PI_GPIO_OUTPUT|PI_GPIO_PULL_DISABLE|PI_GPIO_DRIVE_STRENGTH_LOW;
 

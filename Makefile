@@ -16,7 +16,7 @@ include $(RULES_DIR)/pmsis_defs.mk
 # 1:	Demo DenoiseWav: Input file Wav, Run Denoiser, Output file Wav
 # 2: 	DSPWav_test: Input file Wav, Run Denoiser but not NN, Check Output Wav
 # 3:  	NN_Test: Input file STFT, Run NN Denoiser only, check NN Output
-APP_MODE=0
+APP_MODE ?= 0
 ############################################## 
 # 0:	Demo
 ifeq ($(APP_MODE), 0)
@@ -288,6 +288,7 @@ APP_SRCS += BUILD_MODEL_STFT/RFFTKernels.c
 
 #C flags
 APP_CFLAGS += -O2 -s -mno-memcpy -fno-tree-loop-distribute-patterns 
+APP_CFLAGS += -Wno-incompatible-pointer-types
 
 #include paths
 APP_CFLAGS += -Icommon -I$(GAP_SDK_HOME)/libs/gap_lib/include/
@@ -316,7 +317,7 @@ APP_CFLAGS += -DAT_INPUT_HEIGHT=$(AT_INPUT_HEIGHT)
 APP_CFLAGS += -DMAX_L2_BUFFER=$(MODEL_L2_MEMORY)
 APP_CFLAGS += -DDEMO=$(DEMO)
 APP_CFLAGS += -DH_STATE_LEN=$(H_STATE_LEN)
-APP_CFLAGS += -DBUILD_DIR="../../.."
+APP_CFLAGS += -DAPP_DIR="$(PWD)"
 
 
 APP_LDFLAGS		+= -lm

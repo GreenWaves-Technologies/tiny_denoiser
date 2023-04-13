@@ -14,6 +14,7 @@
 #include "bsp/ram.h"
 #include <bsp/fs/hostfs.h>
 #include "gaplib/wavIO.h" 
+#include "dac.h"
 
 // Autotiler NN functions
 #include "RFFTKernels.h"
@@ -55,7 +56,9 @@ static PI_L2 uint16_t slider_value;
 // datatype for computation
 #define DATATYPE_SIGNAL     float16
 #define DATATYPE_SIGNAL_INF float16
+#ifndef SqrtF16
 #define SqrtF16(a) __builtin_pulp_f16sqrt(a)
+#endif
 
 
 #if IS_INPUT_STFT == 0 
@@ -353,10 +356,10 @@ static void RunDenoiser()
         if (pi_i2s_open(i2s))
             return -1;
 
-        pi_pad_set_function(SAI_SCK(SAIn),PI_PAD_FUNC0);
-        pi_pad_set_function(SAI_SDI(SAIn),PI_PAD_FUNC0);
-        pi_pad_set_function(SAI_SDO(SAIn),PI_PAD_FUNC0);
-        pi_pad_set_function(SAI_WS(SAIn),PI_PAD_FUNC0);
+        pi_pad_function_set(SAI_SCK(SAIn),PI_PAD_FUNC0);
+        pi_pad_function_set(SAI_SDI(SAIn),PI_PAD_FUNC0);
+        pi_pad_function_set(SAI_SDO(SAIn),PI_PAD_FUNC0);
+        pi_pad_function_set(SAI_WS(SAIn),PI_PAD_FUNC0);
 
         return 0;
     }
@@ -411,7 +414,7 @@ int denoiser(void)
     ****/
     gpio_pin_o = PI_GPIO_A89; /* PI_GPIO_A02-PI_GPIO_A05 */
 
-    pi_pad_set_function(PI_PAD_089, PI_PAD_FUNC1);
+    pi_pad_function_set(PI_PAD_089, PI_PAD_FUNC1);
 
     pi_gpio_pin_configure( gpio_pin_o, PI_GPIO_OUTPUT);
 #endif
@@ -427,7 +430,7 @@ int denoiser(void)
     if (pi_ram_open(&DefaultRam))
     {
         printf("Error ram open !\n");
-        pmsis_exit(-3);
+        return -3;
     }
     printf("RAM Opened\n");
 
@@ -450,7 +453,7 @@ int denoiser(void)
     if (pi_cluster_open(&cluster_dev))
     {
         PRINTF("Cluster open failed !\n");
-        pmsis_exit(-4);
+        return -4;
     }
     printf("Cluster Opened\n");
     pi_freq_set(PI_FREQ_DOMAIN_CL, FREQ_CL*1000*1000);
@@ -526,7 +529,7 @@ int denoiser(void)
     if(setup_dac(0) || setup_dac(1))
     {
         printf("Failed to setup DAC\n");
-        pmsis_exit(-1);
+        return -1;
     }
     pi_time_wait_us(100000);
     //printf("Setup DAC OK\n"); 
@@ -550,19 +553,19 @@ int denoiser(void)
     __PREFIX(_L2_Memory) = pi_l2_malloc(denoiser_L2_SIZE);
     if (__PREFIX(_L2_Memory) == 0) {
         printf("Error when allocating L2 buffer\n");
-        pmsis_exit(18);        
+        return 18;        
     }
     
     // Allocate L3 buffers for audio IN/OUT
     if (pi_ram_alloc(&DefaultRam, &inSig, (uint32_t) AUDIO_BUFFER_SIZE*sizeof(short)))
     {
         printf("inSig Ram malloc failed !\n");
-        pmsis_exit(-4);
+        return -4;
     }
     if (pi_ram_alloc(&DefaultRam, &outSig, (uint32_t) AUDIO_BUFFER_SIZE*sizeof(short)))
     {
         printf("outSig Ram malloc failed !\n");
-        pmsis_exit(-5);
+        return -5;
     }
 
     // Read audio from file
@@ -571,7 +574,7 @@ int denoiser(void)
       if (ReadWavFromFile(WavName,
             __PREFIX(_L2_Memory), AUDIO_BUFFER_SIZE*sizeof(short), &header_info)){
         printf("\nError reading wav file\n");
-        pmsis_exit(1);
+        return 1;
     }
     int num_samples = header_info.DataSize * 8 / (header_info.NumChannels * header_info.BitsPerSample);
     printf("Num Samples: %d with BitsPerSample: %d\n", num_samples, header_info.BitsPerSample);
@@ -580,7 +583,7 @@ int denoiser(void)
 
     if(num_samples*sizeof(short) > denoiser_L2_SIZE){
         printf("The size of the audio exceeds the available L2 memory space!\n");
-        pmsis_exit(1);
+        return 1;
     }
 
     // copy input data to L3
@@ -626,7 +629,7 @@ int denoiser(void)
     pi_cluster_task(task_net,&RunDenoiser,NULL);
     if(task_net==NULL) {
       PRINTF("pi_cluster_task alloc Error!\n");
-      pmsis_exit(-1);
+      return -1;
     }
     pi_cluster_task_stacks(task_net, NULL, SLAVE_STACK_SIZE);
     PRINTF("Stack size is %d and %d\n",STACK_SIZE,SLAVE_STACK_SIZE );
@@ -648,7 +651,7 @@ int denoiser(void)
     if (err_construct)
     {
         PRINTF("Graph constructor exited with error: %d\n", err_construct);
-        pmsis_exit(-5);
+        return -5;
     }
     PRINTF("Denoiser Contrcuctor OK! The L1 memory base is: %x\n",__PREFIX(_L1_Memory));
 
@@ -694,7 +697,7 @@ int denoiser(void)
     SFU_StartGraph(&SFU_RTD(GraphINOUT));
     while(1){
         slider_value = ads1014_read(i2c_slider, 0);
-        pi_evt_wait_on(&proc_task);
+        pi_evt_wait(&proc_task);
 
 #ifdef AUDIO_EVK
         pi_gpio_pin_write(gpio_pin_o, 1);
@@ -732,7 +735,7 @@ int denoiser(void)
         L1_Memory = pi_l1_malloc(&cluster_dev, _L1_Memory_SIZE);
         if (L1_Memory==NULL){
             printf("Error allocating L1\n");
-            pmsis_exit(-1);
+            return -1;
         }
 
         pi_cluster_send_task_to_cl(&cluster_dev, task_stft);
@@ -768,14 +771,14 @@ int denoiser(void)
     for(int frame_id = 0; frame_id<STFT_FRAMES; frame_id++){
 
         PRINTF("Reading STFT file %.4d/%d...\n", frame_id, STFT_FRAMES );
-        sprintf(WavName, "%s/samples/mags_%.4d.bin",BUILD_DIR,frame_id);
+        sprintf(WavName, "../../../samples/mags_%.4d.bin",frame_id);
         printf("File being read is : %s\n", WavName);
 
         file[0] = pi_fs_open(&fs, WavName, 0);
 
         if (file[0] == 0) {
             printf("Failed to open file, %s\n", WavName); 
-            pmsis_exit(7);
+            return 7;
         }
         printf("File %x of size %d\n", file[0], sizeof(pi_fs_file_t));
 
@@ -784,7 +787,7 @@ int denoiser(void)
         printf("Bytes read %d - of %d bytes expected\n", len,TotBytes );
         if (len != TotBytes){
             printf("Too few bytes in %s\n", WavName); 
-            pmsis_exit(8);
+            return 8;
         } 
         //__CLOSE(File);
         pi_fs_close(file[0]);
@@ -860,7 +863,7 @@ int denoiser(void)
                 printf("--> Denoiser OK!\n");
             else{
                 printf("--> Denoiser NOK!\n");
-                pmsis_exit(-1);
+                return -1;
             }            
         }
 
@@ -888,7 +891,7 @@ int denoiser(void)
         L1_Memory = pi_l1_malloc(&cluster_dev, _L1_Memory_SIZE);
         if (L1_Memory==NULL){
             printf("Error allocating L1\n");
-            pmsis_exit(-1);
+            return -1;
         }
 
         pi_cluster_send_task_to_cl(&cluster_dev, task_stft);
@@ -935,14 +938,14 @@ int denoiser(void)
         PRINTF("Writing Frame %d/%d to the output buffer\n\n", frame_id+1, tot_frames);
 
         // Cast if needed
-        pi_ram_read(&DefaultRam,  (short *) outSig + (frame_id*FRAME_STEP), 
+        pi_ram_read(&DefaultRam,  (uint32_t)((short *) outSig + (frame_id*FRAME_STEP)), 
             Audio_Frame_temp, FRAME_SIZE * sizeof(short));
 
         // from DATA_S
         for (int i= 0 ; i<FRAME_SIZE; i++){
             Audio_Frame_temp[i] += (short int)(Audio_Frame[i] * (1<<15));
         }
-        pi_ram_write(&DefaultRam,  (short *) outSig + (frame_id*FRAME_STEP),   
+        pi_ram_write(&DefaultRam,  (uint32_t) ((short *) outSig + (frame_id*FRAME_STEP)),   
             Audio_Frame_temp, FRAME_SIZE * sizeof(short));
 #endif //IS_SFU == 1
 
@@ -967,7 +970,7 @@ int denoiser(void)
     __PREFIX(_L2_Memory) = pi_l2_malloc(denoiser_L2_SIZE);
     if (__PREFIX(_L2_Memory) == 0) {
         printf("Error when allocating L2 buffer\n");
-        pmsis_exit(18);        
+        return 18;        
     }
 
 
@@ -1000,7 +1003,7 @@ int denoiser(void)
         printf("--> STFT+iSTFT OK!\n");
     else{
         printf("--> STFT+iSTFT NOK!\n");
-        pmsis_exit(-1);
+        return -1;
     }
 
 
@@ -1012,7 +1015,7 @@ int denoiser(void)
     }
     PRINTF("\n");
 
-    WriteWavToFile("%s/test_gap.wav", BUILD_DIR, 16, 16000, 1, 
+    WriteWavToFile("../../../test_gap.wav", 16, 16000, 1, 
         (uint32_t *) __PREFIX(_L2_Memory), num_samples* sizeof(short));
     printf("Writing wav file to test_gap.wav completed successfully\n");
 #endif //CHECKSUM
@@ -1024,7 +1027,6 @@ int denoiser(void)
     // Close the cluster
     pi_cluster_close(&cluster_dev);
     PRINTF("Ended\n");
-    pmsis_exit(0);
     return 0;
 }
 
@@ -1039,5 +1041,5 @@ int main()
     WavName = __XSTR(WAV_FILE);
 #   endif    
 
-    return pmsis_kickoff((void *) denoiser);
+    return denoiser();
 }
