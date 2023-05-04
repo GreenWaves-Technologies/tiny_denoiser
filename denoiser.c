@@ -333,7 +333,7 @@ static void RunDenoiser()
     volatile int done;
     int nb_transfers;
     int current_size[2];
-    static pi_event_t proc_task;
+    static pi_evt_t proc_task;
 
 
     static int open_i2s_PDM(struct pi_device *i2s, unsigned int SAIn, unsigned int Frequency, unsigned int Direction, unsigned int Diff)
