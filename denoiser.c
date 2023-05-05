@@ -1016,9 +1016,12 @@ int denoiser(void)
     PRINTF("\n");
 
 
-    char output_wav[64]
-    sprintf(output_wav, "%s/test_gap.wav", BUILD_DIR);
-
+    char output_wav[64];
+    #ifdef USE_MAKEFILE
+    sprintf(output_wav, "../../../test_gap.wav");
+    #else
+    sprintf(output_wav, "../test_gap.wav");
+    #endif
     WriteWavToFile(output_wav, 16, 16000, 1, 
         (uint32_t *) __PREFIX(_L2_Memory), num_samples* sizeof(short));
     printf("Writing wav file to test_gap.wav completed successfully\n");
