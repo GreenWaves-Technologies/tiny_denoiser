@@ -26,8 +26,8 @@ static uint8_t read_reg8(pi_device_t *dev, uint8_t addr)
 int fxl6408_setup()
 {
     // Setting pads 42 & 43 to Alternate 0 function to enable I2C1 peripheral
-    pi_pad_set_function(PI_PAD_042,  PI_PAD_FUNC0);
-    pi_pad_set_function(PI_PAD_043,  PI_PAD_FUNC0);
+    pi_pad_function_set(PI_PAD_042,  PI_PAD_FUNC0);
+    pi_pad_function_set(PI_PAD_043,  PI_PAD_FUNC0);
 
     //printf("Testing fxl6408\n");
     int errors = 0;

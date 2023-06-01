@@ -14,7 +14,8 @@
 #include "bsp/ram.h"
 #include <bsp/fs/hostfs.h>
 #include "gaplib/wavIO.h" 
-
+#include "dac.h"
+#include<bsp/gpio/fxl6408.h>
 // Autotiler NN functions
 #include "RFFTKernels.h"
 #include "WinLUT_f16.def"   //load the input audio signal and compute the STFT
@@ -57,7 +58,7 @@ static PI_L2 uint16_t slider_value;
 // datatype for computation
 #define DATATYPE_SIGNAL     float16
 #define DATATYPE_SIGNAL_INF float16
-#define SqrtF16(a) __builtin_pulp_f16sqrt(a)
+//#define SqrtF16(a) __builtin_pulp_f16sqrt(a)
 
 
 #if IS_INPUT_STFT == 0 
@@ -255,8 +256,8 @@ static void RunDenoiser()
         RNN_STATE_1_C,
         RNN_STATE_0_C,
 #   endif
-        RNN_STATE_1_I,
-        RNN_STATE_0_I,        
+        ( void* ) RNN_STATE_1_I,
+        ( void* ) RNN_STATE_0_I,        
         STFT_Magnitude,  
         ResetLSTM, 
         ResetLSTM, 
@@ -361,10 +362,10 @@ static void RunDenoiser()
         if (pi_i2s_open(i2s))
             return -1;
 
-        pi_pad_set_function(SAI_SCK(SAIn),PI_PAD_FUNC0);
-        pi_pad_set_function(SAI_SDI(SAIn),PI_PAD_FUNC0);
-        pi_pad_set_function(SAI_SDO(SAIn),PI_PAD_FUNC0);
-        pi_pad_set_function(SAI_WS(SAIn),PI_PAD_FUNC0);
+        pi_pad_function_set(SAI_SCK(SAIn),PI_PAD_FUNC0);
+        pi_pad_function_set(SAI_SDI(SAIn),PI_PAD_FUNC0);
+        pi_pad_function_set(SAI_SDO(SAIn),PI_PAD_FUNC0);
+        pi_pad_function_set(SAI_WS(SAIn),PI_PAD_FUNC0);
 
         return 0;
     }
@@ -711,7 +712,7 @@ int denoiser(void)
     SFU_StartGraph(&SFU_RTD(GraphINOUT));
     while(1){
         slider_value = ads1014_read(i2c_slider, 0);
-        pi_evt_wait_on(&proc_task);
+        pi_evt_wait(&proc_task);
 
 #ifdef AUDIO_EVK
         pi_gpio_pin_write(gpio_pin_o, 1);
