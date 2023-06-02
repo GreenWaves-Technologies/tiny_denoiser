@@ -58,13 +58,11 @@ static PI_L2 uint16_t slider_value;
 // datatype for computation
 #define DATATYPE_SIGNAL     float16
 #define DATATYPE_SIGNAL_INF float16
-//#define SqrtF16(a) __builtin_pulp_f16sqrt(a)
 
 
 #if IS_INPUT_STFT == 0 
 
     // defines for audio IOs
-
     // allocate space to load the input signal
     #define AUDIO_BUFFER_SIZE (MAX_L2_BUFFER>>1) // as big as the L2 autotiler
     char *WavName = NULL;
@@ -86,7 +84,6 @@ static PI_L2 uint16_t slider_value;
 
 #else
     // here the allocation in case of stft inputs
-
     // allocate space to load the input signal
     char *WavName = NULL;
     #ifdef CHECKSUM
@@ -316,8 +313,8 @@ static void RunDenoiser()
 
 
     #define SAI_ITF_IN         (SAI1)
-    #define SAI_ITF_OUT_1        (SAI2)
-    #define SAI_ITF_OUT_2       (SAI1)
+    #define SAI_ITF_OUT_1      (SAI2)
+    #define SAI_ITF_OUT_2      (SAI1)
 
 
     #define SAI_ID               (48)
@@ -327,7 +324,6 @@ static void RunDenoiser()
     #define SAI_SDO(itf)         (48+(itf*4)+3)
 
     SFU_uDMA_Channel_T *ChanOutCtxt_0;
-    //SFU_uDMA_Channel_T *ChanOutCtxt_1;
     SFU_uDMA_Channel_T *ChanInCtxt_0;
     SFU_uDMA_Channel_T *ChanInCtxt_1;
 
@@ -355,7 +351,6 @@ static void RunDenoiser()
         i2s_conf.pdm_direction = Polarity;                   // 2b'11 slave on both SDI and SDO (SDO under test)
         i2s_conf.pdm_diff = Diff;                           // Set differential mode on pairs (TX only)
 
-    //    i2s_conf.options |= PI_I2S_OPT_EXT_CLK;             // Put I2S CLK in input mode for safety
 
         pi_open_from_conf(i2s, &i2s_conf);
 
@@ -378,10 +373,9 @@ static void RunDenoiser()
     {
         
         if(chunk_in_cnt==STRUCT_DELAY){
-            //pi_time_wait_us(5000);
 
             SFU_Enqueue_uDMA_Channel_Multi(ChanOutCtxt_0, CHUNK_NUM, BufferOutList, BUFF_SIZE, 0);
-            //SFU_Enqueue_uDMA_Channel_Multi(ChanOutCtxt_1, CHUNK_NUM, BufferOutList, BUFF_SIZE, 0);
+
             SFU_GraphResetInputs(&SFU_RTD(GraphINOUT));
         }
 
@@ -412,7 +406,6 @@ int denoiser(void)
     pi_pmu_voltage_set(PI_PMU_VOLTAGE_DOMAIN_CHIP, VOLTAGE);
 #endif 
 
-    //PMU_set_voltage(voltage, 0);
     printf("Set VDD voltage as %.2f, FC Frequency as %d MHz, CL Frequency = %d MHz\n", 
         (float)voltage/1000, FREQ_FC, FREQ_CL);
 
@@ -420,7 +413,6 @@ int denoiser(void)
     /****
         Configure GPIO Output.
     ****/
-    //struct pi_gpio_conf gpio_conf = {0};
     gpio_pin_o = PI_GPIO_A89; /* PI_GPIO_A02-PI_GPIO_A05 */
     pi_gpio_flags_e flags = PI_GPIO_OUTPUT;
     pi_gpio_pin_configure(gpio_pin_o, flags);
@@ -496,7 +488,6 @@ int denoiser(void)
 
     ChanInCtxt_0   = (SFU_uDMA_Channel_T *) pi_l2_malloc(sizeof(SFU_uDMA_Channel_T));
     ChanOutCtxt_0  = (SFU_uDMA_Channel_T *) pi_l2_malloc(sizeof(SFU_uDMA_Channel_T));
-    //ChanOutCtxt_1  = (SFU_uDMA_Channel_T *) pi_l2_malloc(sizeof(SFU_uDMA_Channel_T));
 
     
     
@@ -513,7 +504,6 @@ int denoiser(void)
     
     // Get uDMA channels for GraphOUT
     SFU_Allocate_uDMA_Channel(ChanOutCtxt_0, 0, &SFU_RTD(GraphINOUT));
-    //SFU_Allocate_uDMA_Channel(ChanOutCtxt_1, 0, &SFU_RTD(GraphINOUT));
     
     // Connect Channels to SFU for Mic IN (PDM IN)
     SFU_GraphConnectIO(SFU_Name(GraphINOUT, In_1), SAI_ITF_IN, 2, &SFU_RTD(GraphINOUT));
@@ -525,7 +515,6 @@ int denoiser(void)
     Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT_1, 0, &SFU_RTD(GraphINOUT));
 
     // Connect Channels to SFU for PDM OUT 2
-    //Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, In2), ChanOutCtxt_1->ChannelId, 0, &SFU_RTD(GraphINOUT));
     Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out2), SAI_ITF_OUT_2, 0, &SFU_RTD(GraphINOUT));
 
     //Next API will have a value to replace this high number with -1
@@ -547,7 +536,6 @@ int denoiser(void)
         pmsis_exit(-1);
     }
     pi_time_wait_us(100000);
-    //printf("Setup DAC OK\n"); 
 
     //Enable slicer
     i2c_slider = pi_l2_malloc(sizeof(pi_device_t));
@@ -804,7 +792,6 @@ int denoiser(void)
             printf("Too few bytes in %s\n", WavName); 
             pmsis_exit(8);
         } 
-        //__CLOSE(File);
         pi_fs_close(file[0]);
 
         float * spectrogram_fp32 = (float *)STFT_Spectrogram;
@@ -926,7 +913,6 @@ int denoiser(void)
 #if IS_SFU == 1
             // overlap and add using temporary buffer
             // use Audio_Frame to store an output frame
-            //Audio_Frame_temp[i] = DRY * (STFT_Spectrogram[i] / 2 ) + (1-DRY)* Audio_Frame[i];   // FIXME: divide by 2 because of current Hanning windowing
             Audio_Frame_temp[i] += (STFT_Spectrogram[i] / 2 );   // FIXME: divide by 2 because of current Hanning windowing
 #else
             // use Audio_Frame to store an output frame
