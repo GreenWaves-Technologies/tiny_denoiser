@@ -225,7 +225,8 @@ add_custom_target(sfu_graph ${SFU_KERNEL_C})
 list(APPEND TARGET_SRCS ${SFU_KERNEL_C}
                         $ENV{SFU_RUNTIME}/SFU_RT.c
                         ${CMAKE_SOURCE_DIR}/dac.c)
-list(APPEND TARGET_INCS -I${SFU_BUILDDIR}
+list(APPEND TARGET_INCS -I$ENV{GAP_H_INC}
+                        -I${SFU_BUILDDIR}
                         -I$ENV{SFU_RUNTIME}/include)
 
 
@@ -239,7 +240,8 @@ list(APPEND TARGET_SRCS ${MAIN}
                         ${FFT_KERNEL_C}
 )
 
-list(APPEND TARGET_INCS -I${TILER_INC}
+list(APPEND TARGET_INCS -I$ENV{GAP_H_INC}
+                        -I${TILER_INC}
                         -I${TILER_EMU_INC}
                         -I${GAP_SDK_HOME}/libs/gap_lib/include
                           ${CNN_LIB_INCLUDE}
