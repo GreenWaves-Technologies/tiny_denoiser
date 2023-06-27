@@ -14,7 +14,7 @@
 #include "bsp/ram.h"
 #include <bsp/fs/hostfs.h>
 #include "gaplib/wavIO.h" 
-#include "dac.h"
+#include "ssm6515.h"
 #include<bsp/gpio/fxl6408.h>
 // Autotiler NN functions
 #include "RFFTKernels.h"
@@ -172,8 +172,8 @@ static void RunSTFT()
     //      input: Audio Frame (FRAME_SIZE): 16 bits from the microphone or file
     //      output: STFT_Spectrogram, DATATYPE_SIGNAL as output (e.g. float16)
     STFT(
-        Audio_Frame, 
-        STFT_Spectrogram, 
+        (F16_DSP *)Audio_Frame, 
+        (F16_DSP *)STFT_Spectrogram, 
         TwiddlesLUT,
         RFFTTwiddlesLUT,
         SwapTable,
@@ -215,8 +215,8 @@ static void RuniSTFT()
     //      output: STFT_Spectrogram, DATATYPE_SIGNAL - reusing the same buffer
     ta = gap_cl_readhwtimer();
     iSTFT(
-        STFT_Spectrogram, 
-        STFT_Spectrogram, 
+        (F16_DSP *)STFT_Spectrogram, 
+        (F16_DSP *)STFT_Spectrogram, 
         TwiddlesLUT,   
         RFFTTwiddlesLUT,   
         SwapTable
@@ -299,8 +299,8 @@ static void RunDenoiser()
     #include "SFU_RT.h"
 
     // FIXME: to tune it!!
-    #define Q_BIT_IN 27
-    #define Q_BIT_OUT (Q_BIT_IN-3)
+    #define Q_BIT_IN 24
+    #define Q_BIT_OUT (Q_BIT_IN)
 
     #define BUFF_SIZE (FRAME_STEP*4)
     #define CHUNK_NUM (8)
@@ -335,7 +335,7 @@ static void RunDenoiser()
     volatile int done;
     int nb_transfers;
     int current_size[2];
-    static pi_event_t proc_task;
+    static pi_evt_t proc_task;
 
 
     static int open_i2s_PDM(struct pi_device *i2s, unsigned int SAIn, unsigned int Frequency, unsigned int Polarity, unsigned int Diff)
@@ -526,15 +526,15 @@ int denoiser(void)
     pi_i2s_ioctl(&i2s_sai2, PI_I2S_IOCTL_START, NULL);
 
     
-
-    fxl6408_setup();
-
+    pi_device_t ssm_i2c_0;
+    pi_device_t ssm_i2c_1;
     // Setup 2 DAC
-    if(setup_dac((0x34 << 1)) || setup_dac((0x36 << 1)))
+    if(initialize_ssm6515(&ssm_i2c_0,(0x34 << 1)) || initialize_ssm6515(&ssm_i2c_1,(0x36 << 1)))
     {
         printf("Failed to setup DAC\n");
         pmsis_exit(-1);
     }
+
     pi_time_wait_us(100000);
 
     //Enable slicer

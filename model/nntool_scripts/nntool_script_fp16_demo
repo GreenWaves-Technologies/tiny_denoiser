@@ -9,9 +9,6 @@ fquant
 qtune --step * clip_type=none
 qtune --step * scheme=float float_type=float16
 
-## uncomment this for higher accuracy
-
-
 qshow
 
 set l3_ram_ext_managed true

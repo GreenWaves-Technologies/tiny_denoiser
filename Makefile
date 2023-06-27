@@ -26,7 +26,7 @@ ifeq ($(APP_MODE), 0)
 
 	APP_SRCS   += $(TARGET_BUILD_DIR)/GraphINOUT_L2_Descr.c $(SFU_RUNTIME)/SFU_RT.c
 	APP_CFLAGS += -I$(TARGET_BUILD_DIR) -I$(SFU_RUNTIME)/include
-	APP_SRCS += dac.c
+	APP_SRCS += ssm6515.c
 	io=uart
 	DEMO=1
 
@@ -66,10 +66,10 @@ ifeq ($(APP_MODE), 0)
 	DEMO 		= 1
 	FLASH_TYPE 	= MRAM
 	RAM_TYPE   	= DEFAULT
-	FREQ_CL		= 200
-	FREQ_FC		= 200
-	FREQ_SFU    = 200
-	VOLTAGE		= 650
+	FREQ_CL		= 370
+	FREQ_FC		= 370
+	FREQ_SFU    = 370
+	VOLTAGE		= 800
 endif
 
 
@@ -108,8 +108,8 @@ endif
 #quantization dependent features
 
 # Quantization Mode
-# FP16=float16
-#QUANT_BITS?=FP16
+FP16=float16
+QUANT_BITS=FP16
 H_STATE_LEN?=256
 
 SILENT?=1
