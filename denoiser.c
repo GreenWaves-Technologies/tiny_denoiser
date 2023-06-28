@@ -299,8 +299,8 @@ static void RunDenoiser()
     #include "SFU_RT.h"
 
     // FIXME: to tune it!!
-    #define Q_BIT_IN 24
-    #define Q_BIT_OUT (Q_BIT_IN)
+    #define Q_BIT_IN 29
+    #define Q_BIT_OUT (Q_BIT_IN-1)
 
     #define BUFF_SIZE (FRAME_STEP*4)
     #define CHUNK_NUM (8)

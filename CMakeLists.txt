@@ -54,41 +54,35 @@ if (CONFIG_DEMO)
         set(DISABLE_NN_INFERENCE        0)
         set(STFT_FRAMES                 1)
         set(CONFIG_FREQUENCY_CLUSTER  200000000)
-        set(CONFIG_FREQUENCY_CLUSTER  200000000)
+        set(CONFIG_FREQUENCY_FC       200000000)
         set(CONFIG_FREQUENCY_SFU      200000000)
         set(CONFIG_VOLTAGE            650)
-
         set(CONFIG_IO_TYPE_UART         y)
-
+        set(CONFIG_PLATFORM_GVSOC       n)
+        set(CONFIG_PLATFORM_BOARD       y)
 elseif(CONFIG_DENOISE_WAV)
         set(DEMO                        1)
         set(IS_SFU                      0)
         set(IS_INPUT_STFT               0)
         set(DISABLE_NN_INFERENCE        0)
         set(STFT_FRAMES                 1)
-
         set(CONFIG_IO_TYPE_SEMIHOSTING  y)
         set(WAV_FILE samples/real_samples/phone_call.wav)
-
 elseif(CONFIG_DSP_WAV)
         set(DEMO                        0)
         set(IS_SFU                      0)
         set(IS_INPUT_STFT               0)
         set(DISABLE_NN_INFERENCE        1)
         set(STFT_FRAMES                 1)
-
         set(CONFIG_IO_TYPE_SEMIHOSTING  y)
         set(WAV_FILE samples/dataset/noisy/p232_050.wav)
-
 elseif(CONFIG_NN_TEST)
         set(DEMO                        0)
         set(IS_SFU                      0)
         set(IS_INPUT_STFT               1)
         set(DISABLE_NN_INFERENCE        0)
         set(STFT_FRAMES                 1)
-
         set(CONFIG_IO_TYPE_SEMIHOSTING  y)
-
 endif()
 set(H_STATE_LEN          256)
 set(FRAME_SIZE           400)
@@ -225,7 +219,7 @@ add_custom_target(sfu_graph ${SFU_KERNEL_C})
 
 list(APPEND TARGET_SRCS ${SFU_KERNEL_C}
                         $ENV{SFU_RUNTIME}/SFU_RT.c
-                        ${CMAKE_SOURCE_DIR}/dac.c)
+                        ${CMAKE_SOURCE_DIR}/ssm6515.c)
 list(APPEND TARGET_INCS -I${SFU_BUILDDIR}
                         -I$ENV{SFU_RUNTIME}/include)
 
@@ -260,14 +254,14 @@ list(APPEND TARGET_CFLAGS   -gdwarf-2
 math(EXPR FREQ_CL_MHZ "${CONFIG_FREQUENCY_CLUSTER}/1000/1000")
 math(EXPR FREQ_FC_MHZ "${CONFIG_FREQUENCY_FC}/1000/1000")
 math(EXPR FREQ_SFU_MHZ "${CONFIG_FREQUENCY_SFU}/1000/1000")
-list(APPEND TARGET_PREPROCESSOR -DPERF
-                                -DAT_MODEL_PREFIX=${MODEL_NAME}
-                                -DSTACK_SIZE=${CONFIG_CL_MASTER_CORE_STACK_SIZE}
-                                -DSLAVE_STACK_SIZE=${CONFIG_CL_SLAVE_CORE_STACK_SIZE}
-                                -DFREQ_CL=${FREQ_CL_MHZ}
-                                -DFREQ_FC=${FREQ_FC_MHZ}
-                                -DFREQ_SFU=${FREQ_SFU_MHZ}
-                                -DVOLTAGE=${CONFIG_VOLTAGE}
+list(APPEND TARGET_PREPROCESSOR -DPERF 
+                                -DAT_MODEL_PREFIX=${MODEL_NAME} 
+                                -DSTACK_SIZE=${CONFIG_CL_MASTER_CORE_STACK_SIZE} 
+                                -DSLAVE_STACK_SIZE=${CONFIG_CL_SLAVE_CORE_STACK_SIZE} 
+                                -DFREQ_CL=${FREQ_CL_MHZ} 
+                                -DFREQ_FC=${FREQ_FC_MHZ} 
+                                -DFREQ_SFU=${FREQ_SFU_MHZ} 
+                                -DVOLTAGE=${CONFIG_VOLTAGE} 
                                 -DWAV_FILE=${CMAKE_CURRENT_SOURCE_DIR}/${WAV_FILE}
                                 -DIS_SFU=${IS_SFU}
                                 -DIS_INPUT_STFT=${IS_INPUT_STFT}

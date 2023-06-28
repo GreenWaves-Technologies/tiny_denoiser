@@ -5,15 +5,21 @@ fusions --scale8
 nodeoption GRU_74 RNN_STATES_AS_INPUTS 1
 nodeoption GRU_136 RNN_STATES_AS_INPUTS 1
 
+run_pyscript $(COLLECT_STATS_SCRIPT) $(SAMPLES_QUANT) 8 $(GRU) $(MODEL_BUILD)/ $(H_STATE_LEN)
+aquant --stats $(MODEL_BUILD)/data_quant.json
 
-fquant
 qtune --step * clip_type=none
-qtune --step * scheme=float float_type=float16
-
-#run_pyscript $(COLLECT_STATS_SCRIPT) $(SAMPLES_QUANT) 8 $(GRU) $(MODEL_BUILD)/ $(H_STATE_LEN)
-#aquant --stats $(MODEL_BUILD)/data_quant.json
-
-
+#qtune --step h_state_GRU_74 clip_type=none
+#qtune --step h_state_GRU_136 clip_type=none
+#qtune --step GRU_74 clip_type=none
+#qtune --step GRU_136 clip_type=none
+qtune --step input_1 scheme=float float_type=float16 
+qtune --step Conv_0_reshape_in scheme=float float_type=float16 
+qtune --step Conv_0_fusion scheme=float float_type=float16 
+qtune --step Conv_139_fusion scheme=float float_type=float16 
+qtune --step Conv_142_fusion scheme=float float_type=float16 
+qtune --step Conv_142_reshape_out scheme=float float_type=float16 
+qtune --step output_1 scheme=float float_type=float16 
 
 qshow
 

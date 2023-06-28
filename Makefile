@@ -18,6 +18,13 @@ include $(RULES_DIR)/pmsis_defs.mk
 # 3:  	NN_Test: Input file STFT, Run NN Denoiser only, check NN Output
 APP_MODE=0
 ############################################## 
+
+############ Type of NN for DEMO mode ################
+# MIXED_FP16_INT8: LSTM/GRU INT8, Linear Layers FP16
+# FP16           : All nn layer in Floating point 16 bits
+NN_TYPE?=FP16
+############################################## 
+
 # 0:	Demo
 ifeq ($(APP_MODE), 0)
 	IS_SFU=1 
@@ -66,10 +73,10 @@ ifeq ($(APP_MODE), 0)
 	DEMO 		= 1
 	FLASH_TYPE 	= MRAM
 	RAM_TYPE   	= DEFAULT
-	FREQ_CL		= 370
-	FREQ_FC		= 370
-	FREQ_SFU    = 370
-	VOLTAGE		= 800
+	FREQ_CL		= 200
+	FREQ_FC		= 200
+	FREQ_SFU    = 200
+	VOLTAGE		= 650
 endif
 
 
@@ -122,8 +129,6 @@ FREQ_CL?=370
 FREQ_FC?=370
 VOLTAGE?=800
 
-
-
 #############################################
 ### 		Demo Settings
 #############################################
@@ -137,8 +142,14 @@ SAMPLES_QUANT=samples/quant/
 
 NNTOOL_EXTRA_FLAGS=--use_lut_sigmoid --use_lut_tanh
 #To use the full presixion FP16 you can use the nntool_script_f16_demo instead of nntool_script_fp16_mixed_demo
-#NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_f16_demo
-NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_fp16_mixed_demo
+
+#This is just for demo mode
+ifeq '$(NN_TYPE)' 'MIXED_FP16_INT8'
+	NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_fp16_mixed_demo
+else ifeq '$(NN_TYPE)' 'FP16'
+	NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_fp16_demo
+endif
+
 GRU?=1
 #endif 
 DEMO?=0

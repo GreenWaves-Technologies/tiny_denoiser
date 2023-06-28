@@ -21,17 +21,20 @@ Filters:
                      0x2000000,     -0x2000000
                     }
             };
-            /* {F_LIMITER, {GSm0, GSm1, ESmU0, ESmU1, ESmD0, ESmD1, KLow, KUp, HC0, HC1, HC2, HC3, HC4, HC5}} */
+        /* {F_LIMITER, {GSm0, GSm1, ESmU0, ESmU1, ESmD0, ESmD1, KLow, KUp, HC0, HC1, HC2, HC3, HC4, HC5}} */
         Lim1 =
         {
             LIMITER,
-            {
-                8304722, 83885, // gain smooth
-                4194304, 4194304, // envelope smooth up
-                8367636, 20971, // envelope smooth down
-
-                // Knee 9dB
-                4996776, 14082828, // knee thresholds
+            {   
+            //  GSm0, GSm1
+                8304722, 83885,     // gain smooth
+            //  ESmU0,   ESmU1
+                4194304, 4194304,   // envelope smooth up
+            //  ESmD0,   ESmD1
+                8367636, 20971,     // envelope smooth down
+            //  KLow     KUp
+                4996776, 14082828, // knee thresholds (9dB)
+            //  HC0      HC1        HC2        HC3         HC4        HC5
                 8825263, -60131372, 165356217, -226595183, 138739640, 3282384 // knee coeffs
             }
         };
@@ -64,29 +67,22 @@ Configure:
     Norm.EnableSat = 1;
     Norm.Precision = 24;
     Norm.Scaling = 0;
-    Lim1.Decimation = 20;
-
+    //Lim1.Decimation = 0;
 
 Connects:
-/*
-    Connect(In1, graph_pdm_inout__Resampler_output1);
-    Connect(graph_pdm_inout__Resampler_output1, Out1);
-
-    Connect(In2, graph_pdm_inout__Resampler_output2);
-    Connect(graph_pdm_inout__Resampler_output2, Out2);
-*/
-
 
     Connect(In1, graph_pdm_inout__Resampler_output);
-    Connect(graph_pdm_inout__Resampler_output, split);
+    Connect(graph_pdm_inout__Resampler_output, Lim1);
+    Connect(Lim1, Norm);
+    Connect(Norm, split);
     Connect(split.0, Out1);
     Connect(split.1, Out2);
 
 
     Connect(In_1, graph_pdm_inout__Resampler_input);
-    Connect(graph_pdm_inout__Resampler_input, Lim1);
-    Connect(Lim1, Norm);
-    Connect(Norm, Out_1);
+    Connect(graph_pdm_inout__Resampler_input, Out_1);
+    // Connect(Lim1, Norm);
+    // Connect(Norm, Out_1);
 
 SFU_CloseGraph();
 
