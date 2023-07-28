@@ -44,7 +44,9 @@ include($ENV{GAP_SDK_HOME}/utils/cmake/setup.cmake)
 # Application's kconfig options
 ###############################################################################
 
-set(WAV_FILE samples/sample_0000.wav)
+if(NOT DEFINED WAV_FILE)
+        set(WAV_FILE samples/sample_0000.wav)
+endif()
 set(APP_MSG_PREFIX "[${BoldRed}${TARGET_NAME}${ColourReset}]")
 if (CONFIG_DEMO)
         set(DEMO                        1)
@@ -56,7 +58,8 @@ if (CONFIG_DEMO)
         set(CONFIG_FREQUENCY_CLUSTER  200000000)
         set(CONFIG_FREQUENCY_SFU      200000000)
         set(CONFIG_VOLTAGE            650)
-
+        set(AUDIO_EVK                   1)
+        set(GRU_FLAG                    1)
         set(CONFIG_IO_TYPE_UART         y)
 
 elseif(CONFIG_DENOISE_WAV)
@@ -65,9 +68,12 @@ elseif(CONFIG_DENOISE_WAV)
         set(IS_INPUT_STFT               0)
         set(DISABLE_NN_INFERENCE        0)
         set(STFT_FRAMES                 1)
-
+        set(GRU_FLAG                    1)
         set(CONFIG_IO_TYPE_SEMIHOSTING  y)
-        set(WAV_FILE samples/real_samples/phone_call.wav)
+        set(AUDIO_EVK                   0)
+        if(NOT DEFINED WAV_FILE)
+                set(WAV_FILE samples/real_samples/phone_call.wav)
+        endif()
 
 elseif(CONFIG_DSP_WAV)
         set(DEMO                        0)
@@ -75,7 +81,7 @@ elseif(CONFIG_DSP_WAV)
         set(IS_INPUT_STFT               0)
         set(DISABLE_NN_INFERENCE        1)
         set(STFT_FRAMES                 1)
-
+        set(AUDIO_EVK                   0)
         set(CONFIG_IO_TYPE_SEMIHOSTING  y)
         set(WAV_FILE samples/dataset/noisy/p232_050.wav)
 
@@ -85,7 +91,7 @@ elseif(CONFIG_NN_TEST)
         set(IS_INPUT_STFT               1)
         set(DISABLE_NN_INFERENCE        0)
         set(STFT_FRAMES                 1)
-
+        set(AUDIO_EVK                   0)
         set(CONFIG_IO_TYPE_SEMIHOSTING  y)
 
 endif()
@@ -98,23 +104,25 @@ set(SAMPLING_FREQ      16000)
 set(AT_INPUT_WIDTH       257)
 set(AT_INPUT_HEIGHT        1)
 
-
 if (CONFIG_FP16MIXED)
         message(STATUS "${APP_MSG_PREFIX} Quantization Type: FP16MIXED")
         set(CONFIG_NNTOOL_SCRIPT_PATH model/nntool_scripts/nntool_script_fp16_mixed)
+        set(FIX_STATES 1)
 
 elseif (CONFIG_FP16)
         message(STATUS "${APP_MSG_PREFIX} Quantization Type: FP16")
         set(CONFIG_NNTOOL_SCRIPT_PATH model/nntool_scripts/nntool_script_fp16)
+        set(FIX_STATES 0)
 
 elseif (CONFIG_8)
         message(STATUS "${APP_MSG_PREFIX} Quantization Type: SQ8")
         set(CONFIG_NNTOOL_SCRIPT_PATH model/nntool_scripts/nntool_script_int8)
+        set(FIX_STATES 1)
 
 elseif (CONFIG_NE16)
         message(STATUS "${APP_MSG_PREFIX} Quantization Type: NE16")
         set(CONFIG_NNTOOL_SCRIPT_PATH model/nntool_scripts/nntool_script_ne16)
-
+        set(FIX_STATES 1)
 endif()
 
 if (${DEMO})
@@ -263,6 +271,7 @@ math(EXPR FREQ_CL_MHZ "${CONFIG_FREQUENCY_CLUSTER}/1000/1000")
 math(EXPR FREQ_FC_MHZ "${CONFIG_FREQUENCY_FC}/1000/1000")
 math(EXPR FREQ_SFU_MHZ "${CONFIG_FREQUENCY_SFU}/1000/1000")
 list(APPEND TARGET_PREPROCESSOR -DPERF
+                                -DFIX_STATES=${FIX_STATES}
                                 -DAT_MODEL_PREFIX=${MODEL_NAME}
                                 -DSTACK_SIZE=${CONFIG_CL_MASTER_CORE_STACK_SIZE}
                                 -DSLAVE_STACK_SIZE=${CONFIG_CL_SLAVE_CORE_STACK_SIZE}
@@ -272,6 +281,7 @@ list(APPEND TARGET_PREPROCESSOR -DPERF
                                 -DVOLTAGE=${CONFIG_VOLTAGE}
                                 -DWAV_FILE=${CMAKE_CURRENT_SOURCE_DIR}/${WAV_FILE}
                                 -DIS_SFU=${IS_SFU}
+                                -DAUDIO_EVK=${AUDIO_EVK}
                                 -DIS_INPUT_STFT=${IS_INPUT_STFT}
                                 -DSTFT_FRAMES=${STFT_FRAMES}
                                 -DFRAME_SIZE=${FRAME_SIZE}

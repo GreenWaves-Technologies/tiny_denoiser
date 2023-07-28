@@ -12,17 +12,23 @@ from pystoi import stoi
 
 from threading import Thread
 
+
+def my_same_file_diff_checker(*args, **kwargs):
+    return False
+shutil._samefile = my_same_file_diff_checker
+
+
 def run_on_gap_gvsoc(input_file, output_file, compile=True, gru=False, 
                 quant_opt='fp16' ):
-    runner_args  =  " SILENT=1 APP_MODE=1 CHECKSUM=0" 
-    runner_args +=  " GRU=1" if gru else "" 
-    runner_args +=  " WAV_FILE="+input_file
-    runner_args +=  " QUANT_BITS=FP16" if quant_opt=='fp16' else  " QUANT_BITS=8" if quant_opt=='int8' else " QUANT_BITS=FP16MIXED" if quant_opt=='fp16mixed' else ""
+    
+    runner_args =  " -DWAV_FILE="+input_file
+    #runner_args +=  " GRU=1" if gru else "" 
+    runner_args +=  " -U CONFIG_FP16MIXED  -D CONFIG_FP16MIXED=0 -U CONFIG_FP16  -D CONFIG_FP16=1" if quant_opt=='fp16' else  " -U CONFIG_FP16MIXED  -D CONFIG_FP16MIXED=1 -U CONFIG_FP16  -D CONFIG_FP16=0" if quant_opt=='fp16mixed' else ""
 
     if compile:
-        run_command = "make clean all run platform=gvsoc"+ runner_args
+        run_command = "cmake -B build -DCONFIG_DEMO=0 -DCONFIG_DENOISE_WAV=1 "+ runner_args+" && cmake --build build --target run"
     else:
-        run_command = "make all run platform=gvsoc"+ runner_args
+        run_command = "cmake -B build -DCONFIG_DEMO=0 -DCONFIG_DENOISE_WAV=1 "+ runner_args+" && cmake --build build --target exec"
     print("Going to run: ", run_command)
     os.system(run_command)
     return True
@@ -37,15 +43,16 @@ def denoise_sample_on_gap_gvsoc(input_file, output_file, samplerate, padding = F
     if padding:
         data = np.pad(data, (padding, padding))
 
-    file_name =  os.getcwd() + '/samples/test_py.wav'
+    #file_name =  os.getcwd() + '/samples/test_py.wav'
+    file_name =  'samples/test_py.wav'
     sf.write(file_name, data, samplerate)
     run_on_gap_gvsoc(file_name, output_file, compile=compile_GAP, 
                     gru=gru, quant_opt=quant_opt)
-    shutil.copyfile('BUILD/GAP9_V2/GCC_RISCV_FREERTOS//test_gap.wav', output_file)
-    if not os.path.isfile(output_file):
-        print("Error! not any output fiule produced")
-        exit(0)
-    print("Clean audio file stored in: ", output_file)
+    # sf.write('test_gap.wav', output_file,samplerate)
+    # if not os.path.isfile(output_file):
+    #     print("Error! not any output file produced")
+    #     exit(0)
+    # print("Clean audio file stored in: ", output_file)
     return 0
 
 def nntool_get_model(model_onnx, gru, real, quant_fp16,  quant_bfp16, quant_int8, 
@@ -232,7 +239,7 @@ def model_inference(nntool_model, quant_opt, filenames, noisy_path, clean_path,
         samplerate, padding, gru, h_state_len, dry=0.0):
     from nntool.api.utils import qsnrs
 
-    compile_GAP = False     # switch to True to compile GAP at the first time
+    compile_GAP = True     # switch to False to not flash at every time
 
     metric=[]
     suffix_cleanfile = ''
@@ -611,7 +618,6 @@ if __name__ == "__main__":
     
     # call the test
     if args.mode == 'sample':
-        print(args.pad_input)
         #denoise_sample_on_gap_gvsoc(args.wav_input, args.wav_output, args.sample_rate, args.pad_input)
         denoise_sample_on_gap_gvsoc(
             args.wav_input, args.wav_output, args.sample_rate,

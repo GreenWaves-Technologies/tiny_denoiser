@@ -1,4 +1,4 @@
-# Copyright (c) 2022 GreenWaves Technologies SAS
+# Copyright (c) 2023 GreenWaves Technologies SAS
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -60,14 +60,18 @@ menu "DENOISER APP menu"
             bool "FP16"
             select CNN_FP16
 
+        if DSP_WAV || NN_TEST
         config 8
             bool "int8"
             select CNN_SQ8
+        endif
 
+        if DSP_WAV || NN_TEST
         config NE16
             bool "NE16"
             select CNN_SQ8
             select CNN_NE16
+        endif
 
     endchoice
 

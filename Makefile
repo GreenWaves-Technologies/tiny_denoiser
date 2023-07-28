@@ -1,4 +1,4 @@
-# Copyright (C) 2020 GreenWaves Technologies
+# Copyright (C) 2023 GreenWaves Technologies
 # All rights reserved.
 
 # This software may be modified and distributed under the terms
@@ -7,6 +7,15 @@
 ifndef GAP_SDK_HOME
   $(error Source sourceme in gap_sdk first)
 endif
+
+
+$(info )
+$(info ##################################################)
+$(info )
+$(info Makefile usage is deprecated and no more supported)
+$(info )
+$(info ##################################################)
+$(info )
 
 include $(RULES_DIR)/pmsis_defs.mk
 
@@ -18,6 +27,7 @@ include $(RULES_DIR)/pmsis_defs.mk
 # 3:  	NN_Test: Input file STFT, Run NN Denoiser only, check NN Output
 APP_MODE ?= 0
 ############################################## 
+
 # 0:	Demo
 ifeq ($(APP_MODE), 0)
 	IS_SFU=1 
@@ -37,7 +47,7 @@ ifeq ($(APP_MODE), 1)
 	IS_INPUT_STFT=0
 	DISABLE_NN_INFERENCE=0
 	io=host
-	WAV_FILE?=$(CURDIR)/samples/real_samples/phone_call.wav
+	WAV_FILE?=$(CURDIR)/samples/dataset/noisy/p257_259.wav
 	DEMO=1
 endif
 # 2: 	DSPWav_test
@@ -137,7 +147,7 @@ SAMPLES_QUANT=samples/quant/
 
 NNTOOL_EXTRA_FLAGS=--use_lut_sigmoid --use_lut_tanh
 #To use the full presixion FP16 you can use the nntool_script_f16_demo instead of nntool_script_fp16_mixed_demo
-#NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_f16_demo
+#NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_fp16_demo
 NNTOOL_SCRIPT=model/nntool_scripts/nntool_script_fp16_mixed_demo
 GRU?=1
 #endif 
@@ -318,7 +328,7 @@ APP_CFLAGS += -DAT_INPUT_HEIGHT=$(AT_INPUT_HEIGHT)
 APP_CFLAGS += -DMAX_L2_BUFFER=$(MODEL_L2_MEMORY)
 APP_CFLAGS += -DDEMO=$(DEMO)
 APP_CFLAGS += -DH_STATE_LEN=$(H_STATE_LEN)
-APP_CFLAGS += -DAPP_DIR="$(PWD)"
+APP_CFLAGS += -DAPP_DIR="$(PWD)" -DFIX_STATES=0
 
 
 APP_LDFLAGS		+= -lm
@@ -346,7 +356,7 @@ else
 	ifeq ($(APP_MODE), 0)
 	APP_CFLAGS += -DAUDIO_EVK 
 	else
-	APP_CFLAGS += -DPERF -DAUDIO_EVK 
+	APP_CFLAGS += -DPERF -DAUDIO_EVK=1
 	endif
 endif
 

@@ -10,14 +10,16 @@ The RNN is fed with the magnitude of the STFT components and return a suppressio
 ## Demo Getting Started
 The demo runs on the GAP9 Audio EVK, using the microphone of the GAPmod board.
 ```
-make clean all run [APP_MODE=0]
+cmake -B build
+cmake --build build --target run
 ```
-Optionally, the application can run on GVSOC to denoise a custom audio file (.wav).
+Optionally, the application can run on GVSOC (or board) to denoise a custom audio file (.wav).
 ```
-make clean all run platform=gvsoc APP_MODE=1 [WAV_FILE=/<path_to_audio_file>/<file_name>.wav]
+cmake -B build
+cmake --build build --target menuconfig # Select the options DenoiseWav in the DENOISER APP -> Application mode menu
+cmake --build build --target run
 ```
-In the latter case do not forget to source GAP9_V2 target. Output wav file will be written to 
-test_gap.wav inside the BUILD folder.
+Output wav file will be written to test_gap.wav inside the project folder.
 
 ## Project Structure
 * `denoiser.c` is the main file, including the application code
@@ -27,7 +29,7 @@ test_gap.wav inside the BUILD folder.
         * `denoiser.onnx` and `denoiser_GRU.onnx` are respectively LSTM and GRU models trained on the [Valentini][valentini]. they are used for testing purpose.
     * `nntool_scripts/` includes the nntool recipes to quantize the LSTM or GRU models. You can refer to the [quantization section](#nn-quantization-settings) for more details. 
 * `samples/` contains the audio samples for testing and quantization claibration
-* `stft_model.mk` and `model/STFTModel.c` are respectively the Makefile and the AT generator model for the STFT ad iSTFT functions. This files are manually configured. The baseline implementation exploits FP32 datatype.
+* `model/STFTModel.c` is the AT generator model for the STFT ad iSTFT functions. This files are manually configured. The baseline implementation exploits FP32 datatype.
 *  `Graph.src` is the configuation file for Audio IO. It is used only for board target.
 *  `test_accuracy/` includes the python scripts for model accuracy tests. You can refer to the [Python Utilities](#python-utilities) for more details.
 
@@ -39,48 +41,12 @@ Both LSTM and GRU models can be quantized using one of the different options:
 * `FP16MIXED`: only RNN layers are quantized to 8 bits, while the rest is kept to FP16. This option achives the **best** trade-off between accuracy degration and inference speed.
 * `NE16`: currently not supported. 
 
-
-## Project Configuration
-The application code provides mulitple options, depending also if running on _board_ or _gvsoc_ target.
-A list of available options includes:
-* `FREQ_CL` and `FREQ_FC`: to set respectively the clock frequency of the cluster and the fabric controller. Also the periph frequency is set to FREQ_FC. Max frequnecy depends on the voltage: 370 if 0.8V and 240 if 0.65V.
-* `VOLTAGE` (_board_ target only): to select between 0.8V (VOLTAGE=800) and 0.65V (VOLTAGE=650).
-* `FLASH_TYPE`: type of L3 (external) FLASH memory. Set to 'DEFAULT' to adapt to the current board configuration (defined when sourcing the sdk, e.g. AUDIO_EVK). Optimal configuration is 'MRAM', if the model can fit.
-* `RAM_TYPE`: type of L3 (external) RAM memory. Set to 'DEFAULT' to adapt to the current board configuration (defined when sourcing the sdk, e.g. AUDIO_EVK). 
-* `IS_SFU` (_board_ target only): input data from microphone sensor.
-* `IS_INPUT_STFT` (_gvsoc_ target only): 
-    * [0]: input data from file as multiple STFT frames. Hence, STFT preprocessing is not applied and model inference runs over the loaded STFT spectrograms. Mainly used for testing.
-    * [1]: input audio data from file. The wav file is configured with WAV_FILE.
-* `WAV_FILE`: absolute path of the input wav file. 
-* `DISABLE_NN_INFERENCE`: if set to 1, the inference task is skipped. Default is 0. Mainly used for testing.
-* `SILENT`: to enable debug printf (default is 0).
-
-## APP_MODE Configuration
-In addition to individual settings, some application mode are made available to simplify the APP code configuration. This is done by setting the APP_MODE varaible (default is 0).
-### Demo Setting (APP_MODE 0 or 1)
+## Application Mode Configuration
+In addition to individual settings, some application mode are made available to simplify the APP code configuration. This is done by setting the Application Mode in the `make menuconfig` DENOISER APP menu
+### Demo Setting (Application Mode DEMO or DenoiserWav)
 The code runs inference using the `denoiser_dns.onnx` model with  `FP16MIXED` quantization. More accurate at higher energy costs can be obtained with `FP16` quantization by changing the `nntool_script_demo`.
-* `APP_MODE = 0` is meant to run on _board_ target and audio data comes from the microphone.
-* `APP_MODE = 1` is meant to run on _gvsoc_ target and audio data comes from the WAV_FILE file. The wav cleaned audio can be retrieved from the _BUILD_ folder.
-
-You can refer to the commands in the [Demo Getting Started section](#demo-getting-started).
-### Tests on STFT and iSTFT (APP_MODE 2)
-In this configuration, the NN inference is disabled and an audio frame feeds the STFT + iSTFT pipeline. A final checksum checks the similarity between the input and output signals. 
-```
-make clean all run platform=gvsoc APP_MODE=2
-```
-
-### Tests on TinyDenoisers (APP_MODE 3)
-Configuration used to run tests on the NN model inference under various quantization settings. In this case, we refer to the LSTM or GRU TinyDenoiser models trained on Valentini and we use input STFT frames. The following options could be set:
-* `GRU`: 0 for LSTM (`denoiser.onnx`) and 1 for GRU (`denoiser_GRU.onnx`).
-* `QUANT_BITS`: to select among the available [quantization options](#nn-quantization-settings).
-
-The list of prebuilt tests with checksum:
-```
-make clean all run platform=gvsoc APP_MODE=3 GRU=0 STFT_FRAMES=1
-make clean all run platform=gvsoc APP_MODE=3 GRU=1 STFT_FRAMES=1
-make clean all run platform=gvsoc APP_MODE=3 GRU=0 STFT_FRAMES=10
-```
-The checksum are included in `samples/golden_sample_0000.h`.
+* `Demo` is meant to run on _board_ target and audio data comes from the microphone and output is sent to jack output on audio add on.
+* `DenoiserWav = 1` is meant to run on _gvsoc_ and _board_ target and audio data comes from the WAV_FILE file. The wav cleaned audio can be retrieved from the root folder test_gap.wav folder.
 
 
 ## Python Utilities
@@ -91,10 +57,11 @@ The `test_accuracy/test_GAP.py` file provides the routines for testing the NN in
 python test_accuracy/test_GAP.py --mode sample --pad_input 300 --sample_rate 16000 --wav_input /<path_to_audio_file>/<file_name>.wav
 python test_accuracy/test_GAP.py --mode sample --pad_input 300 --sample_rate 16000 --wav_input samples/dataset/noisy/p232_050.wav --quant fp16mixed
 ```
+The output is saved in a file called test_gap.wav in the home of the repository
 
 ### To test on dataset
 ```
-python test_accuracy/test_GAP.py --mode test --pad_input 300 --dataset_path ./<path_to_audio_dataset>/
+python test_accuracy/test_GAP.py --mode test --pad_input 300 --noisy_dataset_path ./<path_to_noisy_audio_dataset>/ --clean_dataset_path ./<path_to_clean_audio_dataset>/
 ```
 
 [dns]: https://www.microsoft.com/en-us/research/academic-program/deep-noise-suppression-challenge-interspeech-2020/

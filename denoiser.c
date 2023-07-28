@@ -40,7 +40,7 @@ struct pi_device* ram = &DefaultRam;
 
 AT_DEFAULTFLASH_FS_EXT_ADDR_TYPE __PREFIX(_L3_Flash) = 0;
 
-#ifdef AUDIO_EVK
+#if AUDIO_EVK
     // GPIO defines
     pi_gpio_e gpio_pin_o; /* PI_GPIO_A02-PI_GPIO_A05 */
     int val_gpio;
@@ -55,7 +55,13 @@ static PI_L2 uint16_t slider_value;
 
 // datatype for computation
 #define DATATYPE_SIGNAL     float16
-#define DATATYPE_SIGNAL_INF float16
+#if FIX_STATES == 1
+    #define DATATYPE_SIGNAL_INF signed char
+    #define ZERO 0
+#else
+    #define DATATYPE_SIGNAL_INF float16
+    #define ZERO 0.0f
+#endif
 #ifndef SqrtF16
 #define SqrtF16(a) __builtin_pulp_f16sqrt(a)
 #endif
@@ -66,7 +72,7 @@ static PI_L2 uint16_t slider_value;
     // defines for audio IOs
 
     // allocate space to load the input signal
-    #define AUDIO_BUFFER_SIZE (MAX_L2_BUFFER>>1) // as big as the L2 autotiler
+    #define AUDIO_BUFFER_SIZE (denoiser_L2_SIZE>>1) // as big as the L2 autotiler
     char *WavName = NULL;
 
     // L3 arrays to store input and output audio 
@@ -248,7 +254,7 @@ static void RunDenoiser()
           states: RNN_STATE_0_I, RNN_STATE_0_C, RNN_STATE_1_I, RNN_STATE_1_C, must be preserved
           reset: only enabled at the start of the application
     */
-#ifdef AUDIO_EVK
+#if AUDIO_EVK
         pi_gpio_pin_write( gpio_pin_o, 1);
 #endif
     __PREFIX(CNN)(
@@ -263,7 +269,7 @@ static void RunDenoiser()
         ResetLSTM, 
         STFT_Magnitude
     );
-#ifdef AUDIO_EVK
+#if AUDIO_EVK
         pi_gpio_pin_write( gpio_pin_o, 0);
 #endif
 
@@ -276,18 +282,17 @@ static void RunDenoiser()
     ta = gap_cl_readhwtimer();
     #endif
     for (int i = 0; i< AT_INPUT_WIDTH*AT_INPUT_HEIGHT; i++ ){
-        //#ifdef AUDIO_EVK
-        
+        #if IS_SFU == 1
         if(slider_value>28000){
-        //#endif
+        #endif
             STFT_Spectrogram[2*i]    = STFT_Spectrogram[2*i]   * STFT_Magnitude[i];
             STFT_Spectrogram[2*i+1]  = STFT_Spectrogram[2*i+1] * STFT_Magnitude[i];
-        //#ifdef AUDIO_EVK
+        #if IS_SFU == 1
         }else{
             STFT_Spectrogram[2*i]    = STFT_Spectrogram[2*i]   * 1.0f;
             STFT_Spectrogram[2*i+1]  = STFT_Spectrogram[2*i+1] * 1.0f;    
         }
-        //#endif
+        #endif
     }    
     #   ifdef PERF
     ti = gap_cl_readhwtimer() - ta;
@@ -383,9 +388,6 @@ static void RunDenoiser()
 #endif // IS_SFU == 1 
 
 
-
-
-
 int denoiser(void)
 {
     printf("Entering main controller\n");
@@ -399,7 +401,7 @@ int denoiser(void)
     pi_freq_set(PI_FREQ_DOMAIN_FC,      FREQ_FC*1000*1000);
     pi_freq_set(PI_FREQ_DOMAIN_PERIPH,  FREQ_FC*1000*1000);
 
-#ifdef AUDIO_EVK
+#if AUDIO_EVK
     pi_pmu_voltage_set(PI_PMU_VOLTAGE_DOMAIN_CHIP, VOLTAGE);
     pi_pmu_voltage_set(PI_PMU_VOLTAGE_DOMAIN_CHIP, VOLTAGE);
 #endif 
@@ -408,7 +410,7 @@ int denoiser(void)
     printf("Set VDD voltage as %.2f, FC Frequency as %d MHz, CL Frequency = %d MHz\n", 
         (float)voltage/1000, FREQ_FC, FREQ_CL);
 
-#ifdef AUDIO_EVK
+#if AUDIO_EVK
     /****
         Configure GPIO Output.
     ****/
@@ -470,14 +472,6 @@ int denoiser(void)
     int Trace = 0;
     pi_evt_sig_init(&proc_task);
 
-    // Drive pad with 12 mAP to have less noise
-    uint32_t *Magic_Setting_0 = (uint32_t *)0x1A104064;
-    *Magic_Setting_0 = 3 << 2 | 3 << 10 | 3 << 18 | 3 << 26;
-
-    // SAI 2 -> Drive pad with 12 mAP to have less noise
-    uint32_t *Magic_Setting = (uint32_t *)0x1A104068;
-    *Magic_Setting = 3 << 10 | 3 << 18;
-    
     // Configure PDM in
     if (open_i2s_PDM(&i2s_in, SAI_ITF_IN,   3072000, 3, 0)) return -1;
     // Configure PDM out
@@ -570,6 +564,7 @@ int denoiser(void)
 
     // Read audio from file
     printf("Reading wav from: %s \n", WavName);
+    printf("buffer size: %d\n",AUDIO_BUFFER_SIZE);
     header_struct header_info;
       if (ReadWavFromFile(WavName,
             __PREFIX(_L2_Memory), AUDIO_BUFFER_SIZE*sizeof(short), &header_info)){
@@ -637,10 +632,10 @@ int denoiser(void)
     // Reset LSTM
     ResetLSTM = 1;
     for(int i=0; i<RNN_STATE_DIM_0; i++){
-        RNN_STATE_0_I[i] = (DATATYPE_SIGNAL_INF) 0.0f;
+        RNN_STATE_0_I[i] = (DATATYPE_SIGNAL_INF) ZERO;
     }
     for(int i=0; i<RNN_STATE_DIM_1; i++){
-        RNN_STATE_1_I[i] = (DATATYPE_SIGNAL_INF) 0.0f;
+        RNN_STATE_1_I[i] = (DATATYPE_SIGNAL_INF) ZERO;
     }
 
     /******
@@ -699,7 +694,7 @@ int denoiser(void)
         slider_value = ads1014_read(i2c_slider, 0);
         pi_evt_wait(&proc_task);
 
-#ifdef AUDIO_EVK
+#if AUDIO_EVK
         pi_gpio_pin_write(gpio_pin_o, 1);
 #endif
 
@@ -869,7 +864,7 @@ int denoiser(void)
 
 #endif //CHECKSUM
 
-#ifdef AUDIO_EVK
+#if AUDIO_EVK
         pi_gpio_pin_write( gpio_pin_o, 0);
 #endif
 
@@ -879,7 +874,7 @@ int denoiser(void)
 
 #if IS_INPUT_STFT == 0 // if not loading the STFT
 
-#ifdef AUDIO_EVK
+#if AUDIO_EVK
         pi_gpio_pin_write( gpio_pin_o, 1);
 #endif
 
@@ -918,6 +913,12 @@ int denoiser(void)
             Audio_Frame[i] = (STFT_Spectrogram[i] / 2 );   // FIXME: divide by 2 because of current Hanning windowing
 #endif
         }
+        PRINTF("\nAudio Out 2: ");
+
+        for (int i= 0 ; i<FRAME_SIZE; i++){
+            PRINTF("%f,", Audio_Frame[i] );
+        }
+
         PRINTF("\n");
 
 
@@ -925,7 +926,7 @@ int denoiser(void)
 #if IS_SFU == 1
 
         // block until next input audio frame is ready
-#ifdef AUDIO_EVK
+#if AUDIO_EVK
         pi_gpio_pin_write( gpio_pin_o, 0);
 #endif
         chunk_in_cnt++;
