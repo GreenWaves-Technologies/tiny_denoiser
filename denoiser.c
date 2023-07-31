@@ -13,8 +13,12 @@
 #include "Gap.h"
 #include "bsp/ram.h"
 #include <bsp/fs/hostfs.h>
-#include "gaplib/wavIO.h" 
-#include "dac.h"
+#include "gaplib/wavIO.h"
+#if AK4332 == 1
+    #include "dac.h"
+#else
+    #include "ssm6515.h"
+#endif
 
 // Autotiler NN functions
 #include "RFFTKernels.h"
@@ -307,8 +311,8 @@ static void RunDenoiser()
     #include "SFU_RT.h"
 
     // FIXME: to tune it!!
-    #define Q_BIT_IN 27
-    #define Q_BIT_OUT (Q_BIT_IN-3)
+    #define Q_BIT_IN 29
+    #define Q_BIT_OUT (Q_BIT_IN-2)
 
     #define BUFF_SIZE (FRAME_STEP*4)
     #define CHUNK_NUM (8)
@@ -390,14 +394,14 @@ static void RunDenoiser()
 
 int denoiser(void)
 {
-    printf("Entering main controller\n");
+    PRINTF("Entering main controller\n");
 
         /****
         Change Frequency if needed
     ****/
  
     // Voltage-Frequency settings
-    uint32_t voltage =VOLTAGE;
+    uint32_t voltage=VOLTAGE;
     pi_freq_set(PI_FREQ_DOMAIN_FC,      FREQ_FC*1000*1000);
     pi_freq_set(PI_FREQ_DOMAIN_PERIPH,  FREQ_FC*1000*1000);
 
@@ -407,7 +411,7 @@ int denoiser(void)
 #endif 
 
     //PMU_set_voltage(voltage, 0);
-    printf("Set VDD voltage as %.2f, FC Frequency as %d MHz, CL Frequency = %d MHz\n", 
+    PRINTF("Set VDD voltage as %.2f, FC Frequency as %d MHz, CL Frequency = %d MHz\n", 
         (float)voltage/1000, FREQ_FC, FREQ_CL);
 
 #if AUDIO_EVK
@@ -421,7 +425,6 @@ int denoiser(void)
     pi_gpio_pin_configure( gpio_pin_o, PI_GPIO_OUTPUT);
 #endif
 
-
     /****
         Configure And Open the External Ram. 
     ****/
@@ -434,7 +437,7 @@ int denoiser(void)
         printf("Error ram open !\n");
         return -3;
     }
-    printf("RAM Opened\n");
+    PRINTF("RAM Opened\n");
 
     /****
         Configure And open cluster. 
@@ -457,7 +460,7 @@ int denoiser(void)
         PRINTF("Cluster open failed !\n");
         return -4;
     }
-    printf("Cluster Opened\n");
+    PRINTF("Cluster Opened\n");
     pi_freq_set(PI_FREQ_DOMAIN_CL, FREQ_CL*1000*1000);
 
 
@@ -473,7 +476,7 @@ int denoiser(void)
     pi_evt_sig_init(&proc_task);
 
     // Configure PDM in
-    if (open_i2s_PDM(&i2s_in, SAI_ITF_IN,   3072000, 3, 0)) return -1;
+    if (open_i2s_PDM(&i2s_in, SAI_ITF_IN,   3072000, 2, 0)) return -1;
     // Configure PDM out
     if (open_i2s_PDM(&i2s_out, SAI_ITF_OUT, 3072000, 0, 0)) return -1;
 
@@ -505,7 +508,13 @@ int denoiser(void)
 
     // Connect Channels to SFU for PDM OUT
     Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, In1), ChanOutCtxt_0->ChannelId, 0, &SFU_RTD(GraphINOUT));
+    #if AK4332 == 1
     Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT, 1, &SFU_RTD(GraphINOUT));
+    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out2), SAI_ITF_IN, 1, &SFU_RTD(GraphINOUT));
+    #else
+    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT, 0, &SFU_RTD(GraphINOUT));
+    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out2), SAI_ITF_IN,  0, &SFU_RTD(GraphINOUT));
+    #endif
 
     //Next API will have a value to replace this high number with -1
     //To be able to 
@@ -517,14 +526,25 @@ int denoiser(void)
 
     
 
+    #if AK4332 == 1
     fxl6408_setup();
-
     // Setup 2 DAC
     if(setup_dac(0) || setup_dac(1))
     {
         printf("Failed to setup DAC\n");
         return -1;
     }
+    #else
+    pi_device_t ssm_i2c_0;
+    pi_device_t ssm_i2c_1;
+    // Setup 2 DAC
+    if(initialize_ssm6515(&ssm_i2c_0,(0x34 << 1)) || initialize_ssm6515(&ssm_i2c_1,(0x36 << 1)))
+    {
+        printf("Failed to setup DAC\n");
+        return -1;
+    }
+    #endif
+
     pi_time_wait_us(100000);
     //printf("Setup DAC OK\n"); 
 
@@ -602,7 +622,7 @@ int denoiser(void)
     /******
         Setup STFT/ISTF task
     ******/
-    printf("Setup STFT task!\n");
+    PRINTF("Setup STFT task!\n");
     struct pi_cluster_task* task_stft;
     task_stft = pi_l2_malloc(sizeof(struct pi_cluster_task));
     pi_cluster_task(task_stft,&RunSTFT,NULL);
@@ -618,7 +638,7 @@ int denoiser(void)
     /******
         Setup Denoiser NN inference task (if enabled)
     ******/
-    printf("Setup Cluster Task for inference!\n");
+    PRINTF("Setup Cluster Task for inference!\n");
     struct pi_cluster_task* task_net;
     task_net = pi_l2_malloc(sizeof(struct pi_cluster_task));
     pi_cluster_task(task_net,&RunDenoiser,NULL);
@@ -690,6 +710,7 @@ int denoiser(void)
 
     chunk_in_cnt=0;
     SFU_StartGraph(&SFU_RTD(GraphINOUT));
+
     while(1){
         slider_value = ads1014_read(i2c_slider, 0);
         pi_evt_wait(&proc_task);

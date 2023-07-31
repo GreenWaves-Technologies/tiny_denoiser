@@ -28,17 +28,17 @@
 cmake_minimum_required(VERSION 3.16)
 
 ###############################################################################
+# CMake pre initialization
+###############################################################################
+
+include($ENV{GAP_SDK_HOME}/utils/cmake/setup.cmake)
+
+###############################################################################
 # Application related definitions
 ###############################################################################
 
 set(TARGET_NAME         "denoiser")
 set(MAIN                "denoiser.c")
-
-###############################################################################
-# CMake pre initialization
-###############################################################################
-
-include($ENV{GAP_SDK_HOME}/utils/cmake/setup.cmake)
 
 ###############################################################################
 # Application's kconfig options
@@ -54,13 +54,15 @@ if (CONFIG_DEMO)
         set(IS_INPUT_STFT               0)
         set(DISABLE_NN_INFERENCE        0)
         set(STFT_FRAMES                 1)
-        set(CONFIG_FREQUENCY_CLUSTER  200000000)
+        set(CONFIG_FREQUENCY_FC       200000000)
         set(CONFIG_FREQUENCY_CLUSTER  200000000)
         set(CONFIG_FREQUENCY_SFU      200000000)
-        set(CONFIG_VOLTAGE            650)
+        # set(CONFIG_VOLTAGE            650)
         set(AUDIO_EVK                   1)
         set(GRU_FLAG                    1)
+## printf in this mode are set on uart otherwise the demo won't work
         set(CONFIG_IO_TYPE_UART         y)
+        set(CONFIG_IO_UART_ITF_1        y)
 
 elseif(CONFIG_DENOISE_WAV)
         set(DEMO                        1)
@@ -95,6 +97,7 @@ elseif(CONFIG_NN_TEST)
         set(CONFIG_IO_TYPE_SEMIHOSTING  y)
 
 endif()
+
 set(H_STATE_LEN          256)
 set(FRAME_SIZE           400)
 set(FRAME_STEP           100)
@@ -151,11 +154,12 @@ else()
         set(EXEC_FROM_FLASH false)
 endif()
 
-list(APPEND NNTOOLSCRIPT_FLAGS "-DCOLLECT_STATS_SCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/model/nntool_scripts/collect_stats.py;-DSAMPLES_QUANT=${CMAKE_CURRENT_SOURCE_DIR}/samples/quant/;-DEXEC_FROM_FLASH=${EXEC_FROM_FLASH};-DMODEL_BUILD=${COMMON_MODEL_BUILDDIR};-DGRU=${GRU_FLAG};-DH_STATE_LEN=${H_STATE_LEN};")
-
 ###############################################################################
 # NNTool Variables 
 ###############################################################################
+
+list(APPEND NNTOOLSCRIPT_FLAGS "-DCOLLECT_STATS_SCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/model/nntool_scripts/collect_stats.py;-DSAMPLES_QUANT=${CMAKE_CURRENT_SOURCE_DIR}/samples/quant/;-DEXEC_FROM_FLASH=${EXEC_FROM_FLASH};-DMODEL_BUILD=${COMMON_MODEL_BUILDDIR};-DGRU=${GRU_FLAG};-DH_STATE_LEN=${H_STATE_LEN};")
+
 
 autotiler_define_gen_names(${TARGET_NAME})
 nntool_setup(${TARGET_NAME})
@@ -230,9 +234,18 @@ add_custom_command(
 )
 add_custom_target(sfu_graph ${SFU_KERNEL_C})
 
+
+if (${CONFIG_AK4332})
+        list(APPEND TARGET_SRCS ${CMAKE_SOURCE_DIR}/dac.c)
+        set(AK4332 1)
+else()
+        list(APPEND TARGET_SRCS ${CMAKE_SOURCE_DIR}/ssm6515.c)
+        set(AK4332 0)
+endif()
+
+
 list(APPEND TARGET_SRCS ${SFU_KERNEL_C}
-                        $ENV{SFU_RUNTIME}/SFU_RT.c
-                        ${CMAKE_SOURCE_DIR}/dac.c)
+                        $ENV{SFU_RUNTIME}/SFU_RT.c)
 list(APPEND TARGET_INCS -I$ENV{GAP_H_INC}
                         -I${SFU_BUILDDIR}
                         -I$ENV{SFU_RUNTIME}/include)
@@ -271,6 +284,7 @@ math(EXPR FREQ_CL_MHZ "${CONFIG_FREQUENCY_CLUSTER}/1000/1000")
 math(EXPR FREQ_FC_MHZ "${CONFIG_FREQUENCY_FC}/1000/1000")
 math(EXPR FREQ_SFU_MHZ "${CONFIG_FREQUENCY_SFU}/1000/1000")
 list(APPEND TARGET_PREPROCESSOR -DPERF
+                                -DAK4332=${AK4332}
                                 -DFIX_STATES=${FIX_STATES}
                                 -DAT_MODEL_PREFIX=${MODEL_NAME}
                                 -DSTACK_SIZE=${CONFIG_CL_MASTER_CORE_STACK_SIZE}

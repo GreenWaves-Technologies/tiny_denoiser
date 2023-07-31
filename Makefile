@@ -17,6 +17,10 @@ $(info )
 $(info ##################################################)
 $(info )
 
+
+$(info )
+$(error Change name of this file to Makefile to make it working, and remove this lines at beginning of Makefile)
+
 include $(RULES_DIR)/pmsis_defs.mk
 
 ##############################################
@@ -328,7 +332,7 @@ APP_CFLAGS += -DAT_INPUT_HEIGHT=$(AT_INPUT_HEIGHT)
 APP_CFLAGS += -DMAX_L2_BUFFER=$(MODEL_L2_MEMORY)
 APP_CFLAGS += -DDEMO=$(DEMO)
 APP_CFLAGS += -DH_STATE_LEN=$(H_STATE_LEN)
-APP_CFLAGS += -DAPP_DIR="$(PWD)" -DFIX_STATES=0
+APP_CFLAGS += -DAPP_DIR="$(PWD)" -DFIX_STATES=0 
 
 
 APP_LDFLAGS		+= -lm

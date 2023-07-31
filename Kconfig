@@ -47,6 +47,20 @@ menu "DENOISER APP menu"
 
     endchoice
 
+
+    choice DAC
+        prompt "DAC output"
+        default SSM6515
+        depends on DEMO
+
+        config AK4332
+            bool "ak4332 - Audio add-on board <= v1.1"
+
+        config SSM6515
+            bool "ssm6515 - Audio add-on board > v2.0"
+
+    endchoice
+
     choice QUANT_TYPE
         prompt "Quantization Type"
         default FP16MIXED
@@ -89,7 +103,7 @@ menu "DENOISER APP menu"
 
     config VOLTAGE
         int "GAP9 Voltage" 
-        default 800
+        default 650
         range 650 800
 
 endmenu

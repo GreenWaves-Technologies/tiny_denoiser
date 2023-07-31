@@ -1,4 +1,4 @@
-set debug true
+#set debug true
 adjust
 fusions --scale8
 
@@ -21,7 +21,7 @@ qtune --step Conv_142_fusion scheme=float float_type=float16
 qtune --step Conv_142_reshape_out scheme=float float_type=float16 
 qtune --step output_1 scheme=float float_type=float16 
 
-qshow
+#qshow
 
 set l3_ram_ext_managed true
 set l3_flash_device $(MODEL_L3_FLASH)
