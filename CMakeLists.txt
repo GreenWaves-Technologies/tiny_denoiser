@@ -243,6 +243,13 @@ else()
         set(AK4332 0)
 endif()
 
+if (${CONFIG_PLATFORM_GVSOC})
+set(GVSOC 1)
+set(AUDIO_EVK 0)
+else()
+set(GVSOC 0)
+endif()
+
 
 list(APPEND TARGET_SRCS ${SFU_KERNEL_C}
                         $ENV{SFU_RUNTIME}/SFU_RT.c)
@@ -310,6 +317,7 @@ list(APPEND TARGET_PREPROCESSOR -DPERF
                                 -DH_STATE_LEN=${H_STATE_LEN}
                                 -DBUILD_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
                                 -DSTD_FLOAT
+                                -DGVSOC=${GVSOC}
 )
 if (${GRU_FLAG} EQUAL 1)
 list(APPEND TARGET_PREPROCESSOR -DGRU)

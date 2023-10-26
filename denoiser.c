@@ -525,7 +525,7 @@ int denoiser(void)
     pi_i2s_ioctl(&i2s_out, PI_I2S_IOCTL_START, NULL);
 
     
-
+#if GVSOC != 1
     #if AK4332 == 1
     fxl6408_setup();
     // Setup 2 DAC
@@ -551,7 +551,7 @@ int denoiser(void)
     //Enable slicer
     i2c_slider = pi_l2_malloc(sizeof(pi_device_t));
     init_ads1014(i2c_slider);
-
+    #endif
 #else //IS_SFU == 0 
 
     /****
@@ -712,7 +712,9 @@ int denoiser(void)
     SFU_StartGraph(&SFU_RTD(GraphINOUT));
 
     while(1){
+        #if GVSOC != 1
         slider_value = ads1014_read(i2c_slider, 0);
+        #endif
         pi_evt_wait(&proc_task);
 
 #if AUDIO_EVK
