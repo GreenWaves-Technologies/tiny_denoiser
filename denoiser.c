@@ -55,7 +55,7 @@ static pi_fs_file_t * file[1];
 static struct pi_device fs;
 static struct pi_device flash;
 pi_device_t* i2c_slider;
-static PI_L2 uint16_t slider_value = 2;
+static PI_L2 uint16_t slider_value = 29000;
 
 // datatype for computation
 #define DATATYPE_SIGNAL     float16
@@ -318,7 +318,7 @@ static void RunDenoiser()
     #define Q_BIT_OUT (Q_BIT_IN-2)
 
     #define BUFF_SIZE (FRAME_STEP*4)
-    #define CHUNK_NUM (8)
+    #define CHUNK_NUM (2)
 
     //This should be equal to FRAME_SIZE/FRAME_STEP + 1
     #define STRUCT_DELAY (5)
