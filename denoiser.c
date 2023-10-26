@@ -55,7 +55,7 @@ static pi_fs_file_t * file[1];
 static struct pi_device fs;
 static struct pi_device flash;
 pi_device_t* i2c_slider;
-static PI_L2 uint16_t slider_value;
+static PI_L2 uint16_t slider_value = 2;
 
 // datatype for computation
 #define DATATYPE_SIGNAL     float16
@@ -310,6 +310,9 @@ static void RunDenoiser()
     #include "GraphINOUT_L2_Descr.h"
     #include "SFU_RT.h"
 
+
+    #include "sfu_pmsis_runtime.h"
+
     // FIXME: to tune it!!
     #define Q_BIT_IN 29
     #define Q_BIT_OUT (Q_BIT_IN-2)
@@ -318,7 +321,7 @@ static void RunDenoiser()
     #define CHUNK_NUM (8)
 
     //This should be equal to FRAME_SIZE/FRAME_STEP + 1
-    #define STRUCT_DELAY (1)
+    #define STRUCT_DELAY (5)
 
     #define SAI_ITF_IN         (1)
     #define SAI_ITF_OUT        (2)
@@ -329,23 +332,59 @@ static void RunDenoiser()
     #define SAI_SDI(itf)         (48+(itf*4)+2)
     #define SAI_SDO(itf)         (48+(itf*4)+3)
 
-    SFU_uDMA_Channel_T *ChanOutCtxt_0;
-    SFU_uDMA_Channel_T *ChanOutCtxt_1;
-    SFU_uDMA_Channel_T *ChanInCtxt_0;
-    SFU_uDMA_Channel_T *ChanInCtxt_1;
+    pi_sfu_graph_t *sfu_graph; // SFU sfu_graph instance.
 
-    void ** BufferInList;
-    void ** BufferOutList;
+    pi_sfu_mem_port_t *sfu_memout_port; // Memory port context
+    pi_sfu_mem_port_t *sfu_memin_port;
 
-    volatile int remaining_size;
-    volatile int sent_size;
-    volatile int done;
-    int nb_transfers;
-    int current_size[2];
+    // Runtime port identifiers
+    int sfu_out_port_ids;
+    int sfu_in_port_ids;
+
+    // List of buffer lists (a list for each output port)
+    pi_sfu_buffer_t sfu_out_buffers[CHUNK_NUM];
+    pi_sfu_buffer_t sfu_in_buffers[CHUNK_NUM];
+
+    uint32_t sfu_out_buff_idx;
+    uint32_t sfu_in_buff_idx;
+
+    // OS task to register end of chunk transfer callback
+    pi_evt_t sfu_mem_out_task;
+    pi_evt_t sfu_mem_in_task;
+
     static pi_evt_t proc_task;
 
+    static int chunk_in_cnt;
 
-    static int open_i2s_PDM(struct pi_device *i2s, unsigned int SAIn, unsigned int Frequency, unsigned int Direction, unsigned int Diff)
+
+    /*******
+     *  Functions for the PDM and SFU
+     *******/
+
+    static int32_t open_sfu_graph(uint32_t sfu_freq, pi_sfu_graph_desc_t *graph_desc)
+    {
+        int32_t err = 0;
+
+        pi_sfu_conf_t sfu_conf = {.sfu_frequency = sfu_freq};
+        if (PI_OK != pi_sfu_open(&sfu_conf))
+        {
+            err = -1;
+            //printf("SFU open failed\n");
+        }
+        else
+        {
+            sfu_graph = pi_sfu_graph_open(graph_desc);
+            if(sfu_graph == NULL)
+            {
+                err = -2;
+                //printf("SFU open graph failed\n");
+            }
+        }
+
+        return err;
+    }
+
+    static int open_i2s_PDM(struct pi_device *i2s, unsigned int SAIn, unsigned int Frequency, unsigned int Polarity, unsigned int Diff)
     {
         struct pi_i2s_conf i2s_conf;
         pi_i2s_conf_init(&i2s_conf);
@@ -354,11 +393,9 @@ static void RunDenoiser()
         i2s_conf.options = PI_I2S_OPT_REF_CLK_FAST;
         i2s_conf.frame_clk_freq = Frequency;                // In pdm mode, the frame_clk_freq = i2s_clk
         i2s_conf.itf = SAIn;                                // Which sai interface
-        i2s_conf.mode = PI_I2S_MODE_PDM;                    // Choose PDM mode
-        i2s_conf.pdm_direction = Direction;                 // 2b'11 slave on both SDI and SDO (SDO under test)
+        i2s_conf.mode = PI_I2S_MODE_PDM;                // Choose PDM mode
+        i2s_conf.pdm_direction = Polarity;                   // 2b'11 slave on both SDI and SDO (SDO under test)
         i2s_conf.pdm_diff = Diff;                           // Set differential mode on pairs (TX only)
-
-    //    i2s_conf.options |= PI_I2S_OPT_EXT_CLK;             // Put I2S CLK in input mode for safety
 
         pi_open_from_conf(i2s, &i2s_conf);
 
@@ -373,20 +410,104 @@ static void RunDenoiser()
         return 0;
     }
 
-    static int chunk_in_cnt;
 
-
-
-    static void handle_sfu_in_0_end(void *arg)
+    static inline uint32_t increment_buffer_idx(uint32_t idx)
     {
-        
-        if(chunk_in_cnt==STRUCT_DELAY){
-            //pi_time_wait_us(5000);
-            SFU_Enqueue_uDMA_Channel_Multi(ChanOutCtxt_0, CHUNK_NUM, BufferOutList, BUFF_SIZE, 0);
-            SFU_GraphResetInputs(&SFU_RTD(GraphINOUT));
-        }
+        if (idx + 1 < CHUNK_NUM)
+            idx += 1;
+        else
+            idx = 0;
+        return idx;
+    }
 
-            pi_evt_push(&proc_task);
+    static void handle_mem_out_end(void * arg)
+    {
+        // /* Enqueue next buffer to receive from MEM_OUT */
+        pi_sfu_enqueue(sfu_graph, sfu_memout_port, &sfu_out_buffers[sfu_out_buff_idx]);
+        sfu_out_buff_idx = increment_buffer_idx(sfu_out_buff_idx);
+        
+        pi_evt_push(&proc_task);
+    }
+
+    static void handle_mem_in_end(void *arg)
+    {
+        // Enqueue next buffer
+        pi_sfu_enqueue(sfu_graph, sfu_memin_port, &sfu_in_buffers[sfu_in_buff_idx]);
+        sfu_in_buff_idx = increment_buffer_idx(sfu_in_buff_idx);
+    }
+
+
+    int setup_SFU_mem_in_mem_out_chain(int32_t mem_out_node_id,int32_t mem_in_node_id, uint32_t nb_buffers, uint32_t frame_step, size_t size)
+    {
+        /***********************************************************************************************
+         * Configure Input / Output (MEM_OUT,MEM_IN uDMA/1D)
+         **********************************************************************************************/
+
+        sfu_out_port_ids = mem_out_node_id;
+        sfu_in_port_ids = mem_in_node_id;
+
+        // Allocate I/O buffers
+            
+            //MEM_OUT
+            sfu_memout_port = pi_sfu_mem_port_get(sfu_graph, sfu_out_port_ids);
+            if (sfu_memout_port == NULL)
+            {
+                printf("Failed to get MEM_OUT port references\n");
+            }
+            pi_evt_callback_irq_init(&sfu_mem_out_task, handle_mem_out_end, &sfu_out_port_ids);
+
+            for (uint32_t i = 0; i < nb_buffers; i++)
+            {
+                void *data = pi_l2_malloc(frame_step*size);
+                if (data == NULL) return -1;
+                pi_sfu_buffer_init(&sfu_out_buffers[i], data, frame_step, size);
+
+                sfu_out_buffers[i].task = &sfu_mem_out_task;
+            pi_sfu_enqueue(sfu_graph, sfu_memout_port, &sfu_out_buffers[i]);
+            }
+            // pi_sfu_continuous_enqueue(sfu_memout_port, &sfu_out_buffers[0], &sfu_out_buffers[1]);
+
+
+
+            //MEM_IN
+            sfu_memin_port = pi_sfu_mem_port_get(sfu_graph, sfu_in_port_ids);
+            if (sfu_memin_port == NULL)
+            {
+                printf("Failed to get MEM_IN port references\n");
+            }
+            pi_evt_callback_irq_init(&sfu_mem_in_task, handle_mem_in_end, &sfu_in_port_ids);
+
+            for (uint32_t i = 0; i < nb_buffers  ; i++)
+            {
+                void *data = pi_l2_malloc(frame_step*size);
+                if (data == NULL) return -1;
+                pi_sfu_buffer_init(&sfu_in_buffers[i], data, frame_step, size);
+
+                sfu_in_buffers[i].task = &sfu_mem_in_task;
+            pi_sfu_enqueue(sfu_graph, sfu_memin_port, &sfu_in_buffers[i]);
+            }
+
+            // pi_sfu_continuous_enqueue(sfu_memin_port, &sfu_in_buffers[0], &sfu_in_buffers[1]);
+
+        return 0;
+    }
+
+
+    int setup_SFU_pdm_in_pdm_out_chain(int32_t pdm_in_node_descriptor, uint32_t pdm_in_itf, uint32_t pdm_in_channel,
+                                        int32_t pdm_out1_node_descriptor, uint32_t pdm_out1_itf, uint32_t pdm_out1_channel,
+                                        int32_t pdm_out2_node_descriptor, uint32_t pdm_out2_itf, uint32_t pdm_out2_channel)
+    {
+        pi_sfu_pdm_itf_id_t in_pdm_itf_id = {pdm_in_itf, pdm_in_channel, 0};
+        pi_sfu_graph_pdm_bind(sfu_graph, pdm_in_node_descriptor,  &in_pdm_itf_id);
+
+        
+        pi_sfu_pdm_itf_id_t out1_pdm_itf_id = {pdm_out1_itf, pdm_out1_channel, 1};
+        pi_sfu_graph_pdm_bind(sfu_graph, pdm_out1_node_descriptor,  &out1_pdm_itf_id);
+        
+        pi_sfu_pdm_itf_id_t out2_pdm_itf_id = {pdm_out2_itf, pdm_out2_channel, 1}; 
+        pi_sfu_graph_pdm_bind(sfu_graph, pdm_out2_node_descriptor,  &out2_pdm_itf_id);
+
+        return 0;
     }
 
 #endif // IS_SFU == 1 
@@ -475,54 +596,43 @@ int denoiser(void)
     int Trace = 0;
     pi_evt_sig_init(&proc_task);
 
+
     // Configure PDM in
     if (open_i2s_PDM(&i2s_in, SAI_ITF_IN,   3072000, 2, 0)) return -1;
     // Configure PDM out
     if (open_i2s_PDM(&i2s_out, SAI_ITF_OUT, 3072000, 0, 0)) return -1;
+ 
+     int32_t err = open_sfu_graph(FREQ_SFU*1000*1000, &SFU_RTD(GraphINOUT));
+    if (err)
+    {
+        printf("Failed to open sfu graph \n");
+        return err;
+    }
 
-    StartSFU(FREQ_SFU*1000*1000, 1);
+    /*******
+     * Setup SFU chain
+     ******/
 
-    ChanInCtxt_0   = (SFU_uDMA_Channel_T *) pi_l2_malloc(sizeof(SFU_uDMA_Channel_T));
-    ChanOutCtxt_0  = (SFU_uDMA_Channel_T *) pi_l2_malloc(sizeof(SFU_uDMA_Channel_T));
-    
-    
-    BufferInList = (void*) pi_l2_malloc(sizeof(void*)*CHUNK_NUM);
-    for(int i=0;i<CHUNK_NUM;i++) BufferInList[i]=pi_l2_malloc(BUFF_SIZE);
-    
-    BufferOutList = (void*)pi_l2_malloc(sizeof(void*)*CHUNK_NUM);
-    for(int i=0;i<CHUNK_NUM;i++) BufferOutList[i]=pi_l2_malloc(BUFF_SIZE);;
-
-
-    // Get uDMA channels for GraphIN
-    SFU_Allocate_uDMA_Channel(ChanInCtxt_0, 0, &SFU_RTD(GraphINOUT));
-    SFU_uDMA_Channel_Callback(ChanInCtxt_0, handle_sfu_in_0_end, ChanInCtxt_0);
-    
-    // Get uDMA channels for GraphOUT
-    SFU_Allocate_uDMA_Channel(ChanOutCtxt_0, 0, &SFU_RTD(GraphINOUT));
-    //SFU_uDMA_Channel_Callback(ChanOutCtxt_0, handle_sfu_out_0_end, ChanOutCtxt_0);
-    
-    // Connect Channels to SFU for Mic IN (PDM IN)
-    SFU_GraphConnectIO(SFU_Name(GraphINOUT, In_1), SAI_ITF_IN, 2, &SFU_RTD(GraphINOUT));
-    SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out_1), ChanInCtxt_0->ChannelId, 0, &SFU_RTD(GraphINOUT));
-    
-
-    // Connect Channels to SFU for PDM OUT
-    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, In1), ChanOutCtxt_0->ChannelId, 0, &SFU_RTD(GraphINOUT));
+    setup_SFU_mem_in_mem_out_chain(SFU_Name(GraphINOUT, Out_1),
+                                   SFU_Name(GraphINOUT, In1),
+                                   CHUNK_NUM, FRAME_STEP, sizeof(int32_t));
     #if AK4332 == 1
-    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT, 1, &SFU_RTD(GraphINOUT));
-    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out2), SAI_ITF_IN, 1, &SFU_RTD(GraphINOUT));
+    setup_SFU_pdm_in_pdm_out_chain(SFU_Name(GraphINOUT, In_1), SAI_ITF_IN, 2,
+                                   SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT, 1,
+                                   SFU_Name(GraphINOUT, Out2), SAI_ITF_IN, 1);
     #else
-    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT, 0, &SFU_RTD(GraphINOUT));
-    Status =  SFU_GraphConnectIO(SFU_Name(GraphINOUT, Out2), SAI_ITF_IN,  0, &SFU_RTD(GraphINOUT));
+    setup_SFU_pdm_in_pdm_out_chain(SFU_Name(GraphINOUT, In_1), SAI_ITF_IN, 2,
+                                   SFU_Name(GraphINOUT, Out1), SAI_ITF_OUT, 0,
+                                   SFU_Name(GraphINOUT, Out2), SAI_ITF_IN, 0);
+                                   
     #endif
 
-    //Next API will have a value to replace this high number with -1
-    //To be able to 
-    SFU_Enqueue_uDMA_Channel_Multi(ChanInCtxt_0, CHUNK_NUM, BufferInList, BUFF_SIZE, 0);
 
-            //Starting In and Out Graphs
+
+    // Let the microphone start (20ms in datasheet) before capturing
     pi_i2s_ioctl(&i2s_in, PI_I2S_IOCTL_START, NULL);
     pi_i2s_ioctl(&i2s_out, PI_I2S_IOCTL_START, NULL);
+
 
     
 #if GVSOC != 1
@@ -632,7 +742,7 @@ int denoiser(void)
     pi_cluster_task_stacks(task_stft, NULL, SLAVE_STACK_SIZE);
 
 
-
+                                
 
 #ifndef DISABLE_NN_INFERENCE 
     /******
@@ -709,7 +819,8 @@ int denoiser(void)
     // audio from SFU
 
     chunk_in_cnt=0;
-    SFU_StartGraph(&SFU_RTD(GraphINOUT));
+    pi_sfu_graph_load(sfu_graph);
+
 
     while(1){
         #if GVSOC != 1
@@ -726,7 +837,7 @@ int denoiser(void)
 
         //First Copy previous loop processed frame to output
         for(int i=0;i<BUFF_SIZE/4;i++) {
-            ((int32_t*)BufferOutList[round_out])[i]= (int32_t)((float)(Audio_Frame_temp[i])*((int)(1<<Q_BIT_OUT)));
+            ((int32_t*)sfu_in_buffers[round_out].data)[i]= (int32_t)((float)(Audio_Frame_temp[i])*((int)(1<<Q_BIT_OUT)));
         }
 
 
@@ -736,7 +847,7 @@ int denoiser(void)
         }
 
         for(int i=0;i<FRAME_STEP;i++){
-            Audio_Frame[i+FRAME_SIZE-FRAME_STEP] = (DATATYPE_SIGNAL)(((float)((int32_t*)BufferInList[round])[i]) /((int)(1<<Q_BIT_IN)));
+            Audio_Frame[i+FRAME_SIZE-FRAME_STEP] = (DATATYPE_SIGNAL)(((float)((int32_t *)sfu_out_buffers[round].data)[i]) /((int)(1<<Q_BIT_IN)));
             Audio_Frame_temp[i+FRAME_SIZE-FRAME_STEP] = (DATATYPE_SIGNAL) 0.0f;
         }
 
