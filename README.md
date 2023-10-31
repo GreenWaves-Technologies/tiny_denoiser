@@ -13,6 +13,14 @@ The demo runs on the GAP9 Audio EVK, using the microphone of the GAPmod board.
 cmake -B build
 cmake --build build --target run
 ```
+It can also run on GVSoC. Please read the GVSoC-gvcontrol section to understand what is done
+```
+cmake -B build
+cmake --build build --target menuconfig # Select GVSoC in the menu. In gvsoc_option, enable "GVSOC proxy mode."
+cmake --build build --target run
+./gvcontrol --port 30000 # in another terminal
+```
+
 Optionally, the application can run on GVSOC (or board) to denoise a custom audio file (.wav).
 ```
 cmake -B build
@@ -45,7 +53,7 @@ Both LSTM and GRU models can be quantized using one of the different options:
 In addition to individual settings, some application mode are made available to simplify the APP code configuration. This is done by setting the Application Mode in the `make menuconfig` DENOISER APP menu
 ### Demo Setting (Application Mode DEMO or DenoiserWav)
 The code runs inference using the `denoiser_dns.onnx` model with  `FP16MIXED` quantization. More accurate at higher energy costs can be obtained with `FP16` quantization by changing the `nntool_script_demo`.
-* `Demo` is meant to run on _board_ target and audio data comes from the microphone and output is sent to jack output on audio add on.
+* `Demo` is meant to run on _board_ target and audio data comes from the microphone and output is sent to jack output on audio add on. This mode is also runnable on GVSoC, please refer to the GVSoC section.
 * `DenoiserWav = 1` is meant to run on _gvsoc_ and _board_ target and audio data comes from the WAV_FILE file. The wav cleaned audio can be retrieved from the root folder test_gap.wav folder.
 
 
@@ -66,4 +74,10 @@ python test_accuracy/test_GAP.py --mode test --pad_input 300 --noisy_dataset_pat
 
 [dns]: https://www.microsoft.com/en-us/research/academic-program/deep-noise-suppression-challenge-interspeech-2020/
 [valentini]: https://datashare.ed.ac.uk/handle/10283/2791
+
+
+### GVSoC - gvcontrol
+To run the `Demo` mode on GVSoC you can use the `gvcontrol` file.
+the gvcontrol is used to send/read data to/from the i2s interface of the gap9 gvsoc.
+You can chose the input noisy wav file you want to process. Since gap is waiting for pdm data, the pcm/pdm convertion module of gvsoc is used. To learn more about this please refer to the following example in the sdk : `basic/interface/sai/pcm2pdm_pdm2pcm`.
 
