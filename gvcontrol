@@ -24,33 +24,20 @@ i2s_out.open(is_pdm=True) #  , sampling_freq=3072000)
 
 # Setup channel 0 RX with input PDM binary file
 i2s_in.slot_open(slot=2, is_rx=True, word_size=32)
-
-
 # Wav file as input - Pcm to Pdm conversion
 # Set modulation params
 i2s_in.slot_rx_file_reader(slot=2, filetype="wav", filepath=args.path_in + '/samples/dataset/noisy/p232_334.wav', width=16, interpolation_ratio_shift = 6, interpolation_type = 'linear')
 
 
 
-
 # Setup channel 0 as PDM Tx
 i2s_out.slot_open(slot=0, is_rx=False, word_size=32)
-
-
-# Binary pdm file as output
-# i2s_1.slot_tx_file_dumper(slot=0, filetype="bin", encoding="plusminus", filepath='../utils/output_pdm.raw', width=32)
-
-# Binary pcm file as output - Pdm to Pcm to Pdm conversion
-# Specify demodulation params
-# i2s_1.slot_tx_file_dumper(slot=0, filetype="bin", encoding="pcm", filepath='../utils/output_pcm.raw', width=32,  cic_n = 8, cic_m = 2, cic_r = 8, cic_shift = 7)
-
 # Wav file as output - Pdm to Pcm conversion
-# Specify demodulation params and sampling freq of the produced wav file
 i2s_out.slot_tx_file_dumper(slot=0, filetype="wav", filepath=args.path_out + '/output_p232_334.wav', width=32,  cic_n = 8, cic_m = 2, cic_r = 64, cic_shift = 24, wav_sampling_freq = 48000)
 # CIC_N = 8; CIC_M = 2; CIC_R = 64; CIC_Shift = 27
 
 
-# Run for 3 s
+# Run for 0.4 s
 gv.run(400000000000)
 
 # Stop the clock and the RX slot
