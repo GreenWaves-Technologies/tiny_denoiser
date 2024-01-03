@@ -7,7 +7,8 @@ parser = argparse.ArgumentParser(description='Control GVSOC')
 
 parser.add_argument("--host", dest="host", default="localhost", help="Specify host name")
 parser.add_argument("--port", dest="port", default=42951, type=int, help="Specify host port")
-
+parser.add_argument("--path-to-in-folder", dest="path_in", default='../', type=str, help="Specify the relative path to the folder containing the inputs")
+parser.add_argument("--path-to-out-folder", dest="path_out", default='../', type=str, help="Specify the relative path to the folder containing the outputs")
 args = parser.parse_args()
 
 
@@ -27,7 +28,7 @@ i2s_in.slot_open(slot=2, is_rx=True, word_size=32)
 
 # Wav file as input - Pcm to Pdm conversion
 # Set modulation params
-i2s_in.slot_rx_file_reader(slot=2, filetype="wav", filepath='../samples/dataset/noisy/p232_334.wav', width=16, interpolation_ratio_shift = 6, interpolation_type = 'linear')
+i2s_in.slot_rx_file_reader(slot=2, filetype="wav", filepath=args.path_in + '/samples/dataset/noisy/p232_334.wav', width=16, interpolation_ratio_shift = 6, interpolation_type = 'linear')
 
 
 
@@ -45,12 +46,12 @@ i2s_out.slot_open(slot=0, is_rx=False, word_size=32)
 
 # Wav file as output - Pdm to Pcm conversion
 # Specify demodulation params and sampling freq of the produced wav file
-i2s_out.slot_tx_file_dumper(slot=0, filetype="wav", filepath='../output_p232_334.wav', width=32,  cic_n = 8, cic_m = 2, cic_r = 64, cic_shift = 24, wav_sampling_freq = 48000)
+i2s_out.slot_tx_file_dumper(slot=0, filetype="wav", filepath=args.path_out + '/output_p232_334.wav', width=32,  cic_n = 8, cic_m = 2, cic_r = 64, cic_shift = 24, wav_sampling_freq = 48000)
 # CIC_N = 8; CIC_M = 2; CIC_R = 64; CIC_Shift = 27
 
 
 # Run for 3 s
-gv.run(4000000000000)
+gv.run(400000000000)
 
 # Stop the clock and the RX slot
 i2s_in.slot_close(slot=2)

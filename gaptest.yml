@@ -7,46 +7,10 @@ variants:
         os: freertos
         builder: cmake
         flags:
-            - CONFIG_DEMO=0
-            - CONFIG_DSP_WAV=1
-            - CONFIG_FP16=1
-            - CONFIG_SILENT=1
-            - CONFIG_CHECKSUM=1
-            - CONFIG_MODEL_DSP_FLOAT16_TYPE_BFLOAT16=n
+            - CONFIG_GVSOC_PROXY_MODE=y
+            - CONFIG_DEMO=1
             - CONFIG_CNN_FP16=y
-            - CONFIG_MODEL_DSP_FLOAT16_TYPE_BFLOAT16=n
-            - CONFIG_MODEL_FLOAT16_TYPE_IEEE16=y
-            - CONFIG_MODEL_L1_MEMORY=120000
-            - CONFIG_MODEL_L2_MEMORY=1000000
-            - CONFIG_MODEL_LOGLEVEL=1
-            - CONFIG_ENABLE_NNTOOL=y
-            - CONFIG_BOARD_GAP9MOD_V1_0_B=y
-            - CONFIG_BOARD_GAP9EVK_V1_3=y
-            - CONFIG_LIB_GAP_LIB=y
-            - CONFIG_LIB_GAP_LIB_WAV_IO=y
-            - CONFIG_DRIVER_READFS=y
-            - CONFIG_DRIVER_HOSTFS=y
-            - CONFIG_DRIVER_TYPE_FLASH=y
-            - CONFIG_DRIVER_TYPE_RAM=y
-            - CONFIG_DRIVER_TYPE_MRAM=y
-            - CONFIG_DRIVER_I2C=y
-            - CONFIG_DRIVER_I2S=y
-            - CONFIG_DRIVER_GPIO=y
-
-    nn_test_gvsoc:
-        chip: gap9
-        board: gap9evk
-        platform: gvsoc
-        os: freertos
-        builder: cmake
-        flags:
-            - CONFIG_DEMO=0
-            - CONFIG_NN_TEST=1
-            - CONFIG_FP16=1
-            - CONFIG_SILENT=1
-            - CONFIG_CHECKSUM=1
             - CONFIG_MODEL_DSP_FLOAT16_TYPE_IEEE16=y
-            - CONFIG_CNN_FP16=y
             - CONFIG_MODEL_FLOAT16_TYPE_IEEE16=y
             - CONFIG_MODEL_L1_MEMORY=120000
             - CONFIG_MODEL_L2_MEMORY=1000000
@@ -54,6 +18,9 @@ variants:
             - CONFIG_ENABLE_NNTOOL=y
             - CONFIG_BOARD_GAP9MOD_V1_0_B=y
             - CONFIG_BOARD_GAP9EVK_V1_3=y
+            - CONFIG_BOARD_AUDIO_ADDON_V2_1=y
+            - CONFIG_BOARD_AUDIO_ADDON_V2_1_OPTION_SSM6515_PDM=y
+            - CONFIG_DRIVER_T3902=y
             - CONFIG_LIB_GAP_LIB=y
             - CONFIG_LIB_GAP_LIB_WAV_IO=y
             - CONFIG_DRIVER_READFS=y
@@ -64,67 +31,15 @@ variants:
             - CONFIG_DRIVER_I2C=y
             - CONFIG_DRIVER_I2S=y
             - CONFIG_DRIVER_GPIO=y
+            - CONFIG_LIB_SFU=y
+            - CONFIG_LIB_SFU_OPTION_AUDIO_SW_QUEUES=y
 
-    dsp_test_board:
-        chip: gap9
-        board: gap9evk
-        platform: board
-        os: freertos
-        builder: cmake
-        flags:
-            - CONFIG_DEMO=0
-            - CONFIG_DSP_WAV=1
-            - CONFIG_FP16=1
-            - CONFIG_SILENT=1
-            - CONFIG_CHECKSUM=1
-            - CONFIG_MODEL_DSP_FLOAT16_TYPE_IEEE16=y
-            - CONFIG_CNN_FP16=y
-            - CONFIG_MODEL_FLOAT16_TYPE_IEEE16=y
-            - CONFIG_MODEL_L1_MEMORY=120000
-            - CONFIG_MODEL_L2_MEMORY=1000000
-            - CONFIG_MODEL_LOGLEVEL=1
-            - CONFIG_ENABLE_NNTOOL=y
-            - CONFIG_BOARD_GAP9MOD_V1_0_B=y
-            - CONFIG_BOARD_GAP9EVK_V1_3=y
-            - CONFIG_LIB_GAP_LIB=y
-            - CONFIG_LIB_GAP_LIB_WAV_IO=y
-            - CONFIG_DRIVER_READFS=y
-            - CONFIG_DRIVER_HOSTFS=y
-            - CONFIG_DRIVER_TYPE_FLASH=y
-            - CONFIG_DRIVER_TYPE_RAM=y
-            - CONFIG_DRIVER_TYPE_MRAM=y
-            - CONFIG_DRIVER_I2C=y
-            - CONFIG_DRIVER_I2S=y
-            - CONFIG_DRIVER_GPIO=y
-
-    nn_test_board:
-        chip: gap9
-        board: gap9evk
-        platform: board
-        os: freertos
-        builder: cmake
-        flags:
-            - CONFIG_DEMO=0
-            - CONFIG_NN_TEST=1
-            - CONFIG_FP16=1
-            - CONFIG_SILENT=1
-            - CONFIG_CHECKSUM=1
-            - CONFIG_MODEL_DSP_FLOAT16_TYPE_IEEE16=y
-            - CONFIG_CNN_FP16=y
-            - CONFIG_MODEL_FLOAT16_TYPE_IEEE16=y
-            - CONFIG_MODEL_L1_MEMORY=120000
-            - CONFIG_MODEL_L2_MEMORY=1000000
-            - CONFIG_MODEL_LOGLEVEL=1
-            - CONFIG_ENABLE_NNTOOL=y
-            - CONFIG_BOARD_GAP9MOD_V1_0_B=y
-            - CONFIG_BOARD_GAP9EVK_V1_3=y
-            - CONFIG_LIB_GAP_LIB=y
-            - CONFIG_LIB_GAP_LIB_WAV_IO=y
-            - CONFIG_DRIVER_READFS=y
-            - CONFIG_DRIVER_HOSTFS=y
-            - CONFIG_DRIVER_TYPE_FLASH=y
-            - CONFIG_DRIVER_TYPE_RAM=y
-            - CONFIG_DRIVER_TYPE_MRAM=y
-            - CONFIG_DRIVER_I2C=y
-            - CONFIG_DRIVER_I2S=y
-            - CONFIG_DRIVER_GPIO=y
+        customrun_script: utils/launch.py
+        customrun_args:
+            - --run="cmake --build GAPTEST_BUILD_DIR --target run"
+            - --proxy="GAPTEST_TEST_DIR/gvcontrol --host=localhost --port=30000 --path-to-in-folder=GAPTEST_TEST_DIR --path-to-out-folder=GAPTEST_BUILD_DIR"
+        
+        postrun_script: utils/launch_check_wav.sh
+        postrun_args:
+            - --build-dir GAPTEST_BUILD_DIR
+            - --test-dir GAPTEST_TEST_DIR
