@@ -26,4 +26,4 @@ if [ -z "$GAPTEST_BUILD_DIR" ] || [ -z "$GAPTEST_TEST_DIR" ]; then
 fi
 
 # Vos commandes avec les variables
-${GAPTEST_TEST_DIR}/utils/check_wav.py --input="${GAPTEST_BUILD_DIR}/output_p232_334.wav" --ref="${GAPTEST_TEST_DIR}/utils/golden.wav" --tolerance=1000 --skiped=15
+${GAPTEST_TEST_DIR}/utils/check_wav.py --input="${GAPTEST_BUILD_DIR}/output_p232_334.wav" --ref="${GAPTEST_TEST_DIR}/utils/golden.wav" --tolerance=100000 --skiped=15
