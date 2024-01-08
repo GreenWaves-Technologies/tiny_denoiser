@@ -79,5 +79,6 @@ python test_accuracy/test_GAP.py --mode test --pad_input 300 --noisy_dataset_pat
 ### GVSoC - gvcontrol
 To run the `Demo` mode on GVSoC you can use the `gvcontrol` file.
 the gvcontrol is used to send/read data to/from the i2s interface of the gap9 gvsoc.
-You can chose the input noisy wav file you want to process. Since gap is waiting for pdm data, the pcm/pdm convertion module of gvsoc is used. To learn more about this please refer to the following example in the sdk : `basic/interface/sai/pcm2pdm_pdm2pcm`.
+You can chose the input noisy wav file you want to process. The execution can be long (up to 5 minutes for 3 seconds of simulation).
+Since gap is waiting for pdm data, the pcm/pdm convertion module of gvsoc is used. To learn more about this please refer to the following example in the sdk : `basic/interface/sai/pcm2pdm_pdm2pcm`.
 

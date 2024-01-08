@@ -9,6 +9,7 @@ parser.add_argument("--host", dest="host", default="localhost", help="Specify ho
 parser.add_argument("--port", dest="port", default=42951, type=int, help="Specify host port")
 parser.add_argument("--path-to-in-folder", dest="path_in", default='../', type=str, help="Specify the relative path to the folder containing the inputs")
 parser.add_argument("--path-to-out-folder", dest="path_out", default='../', type=str, help="Specify the relative path to the folder containing the outputs")
+parser.add_argument("--duration", dest="duration", default=3000000000000, type=int, help="Specify the relative path to the folder containing the outputs")
 args = parser.parse_args()
 
 
@@ -37,8 +38,8 @@ i2s_out.slot_tx_file_dumper(slot=0, filetype="wav", filepath=args.path_out + '/o
 # CIC_N = 8; CIC_M = 2; CIC_R = 64; CIC_Shift = 27
 
 
-# Run for 0.4 s
-gv.run(400000000000)
+# Run for 3 s
+gv.run(args.duration)
 
 # Stop the clock and the RX slot
 i2s_in.slot_close(slot=2)
