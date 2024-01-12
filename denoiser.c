@@ -629,11 +629,6 @@ int denoiser(void)
 
 
 
-    // Let the microphone start (20ms in datasheet) before capturing
-    pi_i2s_ioctl(&i2s_in, PI_I2S_IOCTL_START, NULL);
-    pi_i2s_ioctl(&i2s_out, PI_I2S_IOCTL_START, NULL);
-
-
     
 #if GVSOC != 1
     #if AK4332 == 1
@@ -819,9 +814,15 @@ int denoiser(void)
     // audio from SFU
 
     chunk_in_cnt=0;
+
+
+    // Let the microphone start (20ms in datasheet) before capturing
+    pi_i2s_ioctl(&i2s_in, PI_I2S_IOCTL_START, NULL);
+    pi_i2s_ioctl(&i2s_out, PI_I2S_IOCTL_START, NULL);
+    pi_time_wait_us(20000);
     pi_sfu_graph_load(sfu_graph);
 
-
+    
     while(1){
         #if GVSOC != 1
         slider_value = ads1014_read(i2c_slider, 0);
